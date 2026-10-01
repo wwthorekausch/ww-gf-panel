@@ -236,6 +236,34 @@ def cmd_aufraeumen(args) -> int:
     return 0
 
 
+def cmd_usd_auf_eur(args) -> int:
+    client = SevdeskClient(keychain_token(KEYCHAIN_SERVICE))
+    v = client.get(f"Voucher/{args.beleg}")["objects"][0]
+    pos = [laden.parse_position(p) for p in client.get(
+        "VoucherPos", params={"voucher[id]": args.beleg, "voucher[objectName]": "Voucher"})["objects"]]
+    beleg = laden.parse_beleg(v, pos)
+    t = client.get(f"CheckAccountTransaction/{args.umsatz}")["objects"][0]
+    if str(t["status"]) != "100":
+        print(f"Umsatz {args.umsatz} ist schon zugeordnet (Status {t['status']}).")
+        return 1
+    umsatz = laden.parse_umsatz(t)
+    print(f"Beleg  {beleg.id}  {beleg.datum}  {beleg.lieferant}  {beleg.brutto_fremd} {beleg.waehrung} = {beleg.brutto_eur} EUR"
+          f"  Status {beleg.status}  Nr {beleg.belegnr}")
+    print(f"Umsatz {umsatz.id}  {umsatz.datum}  {umsatz.betrag} EUR  {(umsatz.name or umsatz.zweck)[:40]}")
+    print(f"Neu: Beleg in EUR mit {-umsatz.betrag} EUR, dann Zuordnung.")
+    if input("Umstellen und zuordnen? [j/N] ").strip().lower() != "j":
+        return 0
+    conn = db.connect(MODULE_DIR)
+    schreiber = actions.Schreiber(client, conn, db.run_start(conn, args.dry_run), args.dry_run, 1)
+    try:
+        schreiber.usd_auf_eur(beleg, umsatz)
+    except (actions.Abbruch, actions.RegelVerletzung) as e:
+        print(f"STOPP: {e}")
+        return 1
+    print("ok" if not args.dry_run else "(dry-run, nichts geschrieben)")
+    return 0
+
+
 def cmd_status(args) -> int:
     conn = db.connect(MODULE_DIR)
     for r in db.letzte_runs(conn):
@@ -266,13 +294,17 @@ def main() -> int:
         p.add_argument("--limit", type=int, default=20)
         p.add_argument("--umsatz", help="nur den Fall mit dieser Umsatz-ID bearbeiten")
     sub.add_parser("status")
+    p = sub.add_parser("usd-auf-eur")
+    p.add_argument("--beleg", required=True)
+    p.add_argument("--umsatz", required=True)
+    p.add_argument("--dry-run", action="store_true")
     p = sub.add_parser("aufraeumen")
     p.add_argument("--dry-run", action="store_true")
     p = sub.add_parser("init-regeln")
     p.add_argument("--force", action="store_true")
     args = parser.parse_args()
     handlers = {"run": cmd_run, "review": cmd_review, "status": cmd_status, "init-regeln": cmd_init_regeln,
-                "aufraeumen": cmd_aufraeumen}
+                "aufraeumen": cmd_aufraeumen, "usd-auf-eur": cmd_usd_auf_eur}
     return handlers[args.command](args)
 
 

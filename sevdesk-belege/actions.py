@@ -60,6 +60,18 @@ def beleg_speichern_body(beleg: Beleg, kategorie_id: str, brutto: Decimal) -> di
     return {"voucher": voucher, "voucherPosSave": positionen, "voucherPosDelete": None}
 
 
+def usd_auf_eur_body(beleg: Beleg, bank: Decimal) -> dict:
+    """Fremdwährungsbeleg auf EUR mit tatsächlich abgebuchtem Betrag umstellen (PDF bleibt Originalrechnung)."""
+    voucher = {k: beleg.roh[k] for k in ROH_FELDER if beleg.roh.get(k) not in (None, "")}
+    voucher.update({"id": int(beleg.id), "objectName": "Voucher", "mapAll": True, "status": 100, "currency": "EUR"})
+    p = beleg.positionen[0]
+    return {"voucher": voucher, "voucherPosSave": [{
+        "id": int(p.id), "objectName": "VoucherPos", "mapAll": True,
+        "accountingType": {"id": int(p.kategorie_id), "objectName": "AccountingType"},
+        "taxRate": float(p.steuersatz), "sumGross": float(bank), "net": False,
+    }], "voucherPosDelete": None}
+
+
 def neuer_beleg_body(umsatz: Umsatz, regel: Standardregel, kategorie_id: str) -> dict:
     betrag = -umsatz.betrag
     return {
@@ -112,12 +124,13 @@ class Schreiber:
         if self.zaehler >= self.limit:
             raise LimitErreicht(f"Limit {self.limit} erreicht")
 
-    def _nachlesen(self, beleg_id: str, kategorie_id: str, brutto: Decimal) -> None:
+    def _nachlesen(self, beleg_id: str, kategorie_id: str, brutto: Decimal, waehrung: str = "EUR") -> None:
         try:
             v = self.client.get(f"Voucher/{beleg_id}")["objects"][0]
             pos = self.client.get("VoucherPos", params={"voucher[id]": beleg_id,
                                                         "voucher[objectName]": "Voucher"})["objects"]
             ok = (int(v["status"]) == 100 and Decimal(str(v["sumGross"])) == brutto
+                  and (v.get("currency") or "EUR") == waehrung
                   and pos and all(str(p["accountingType"]["id"]) == str(kategorie_id) for p in pos))
         except Exception as e:
             raise Abbruch(f"Nachlesen fehlgeschlagen (Beleg {beleg_id}): {e}") from e
@@ -199,3 +212,23 @@ class Schreiber:
             raise RegelVerletzung(f"Beleg {dup.id} ist kein löschbares Duplikat von {behalten.id}")
         self._pruefe_datum(dup.datum)
         self._schreibe("delete", f"Voucher/{dup.id}", {}, "Voucher", dup.id, f"duplikat löschen (behalten {behalten.id})")
+
+    def usd_auf_eur(self, beleg: Beleg, umsatz: Umsatz) -> None:
+        """USD-Beleg auf EUR = Bankbetrag umstellen, nachlesen, zuordnen. Nur per CLI-Befehl nach Einzel-Freigabe."""
+        if not (beleg.waehrung == "USD" and beleg.status in (50, 100) and len(beleg.positionen) == 1
+                and beleg.kategorie_id and umsatz.betrag < 0):
+            raise RegelVerletzung(f"Beleg {beleg.id} / Umsatz {umsatz.id}: Umstellung USD->EUR nicht zulässig")
+        self._pruefe_datum(beleg.datum, umsatz.datum)
+        bank = -umsatz.betrag
+        self._geschrieben = False
+        try:
+            self._schreibe("post", "Voucher/Factory/saveVoucher", usd_auf_eur_body(beleg, bank),
+                           "Voucher", beleg.id, "usd->eur")
+            if not self.dry_run:
+                self._nachlesen(beleg.id, beleg.kategorie_id, bank, "EUR")
+            self._schreibe("put", f"Voucher/{beleg.id}/bookAmount", zuordnen_body(umsatz, bank),
+                           "Voucher", beleg.id, "zuordnen")
+        except Abbruch as e:
+            if self._geschrieben and not isinstance(e, AbbruchNachSchreiben):
+                raise AbbruchNachSchreiben(str(e)) from e
+            raise

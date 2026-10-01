@@ -15,6 +15,7 @@ Belegentwürfe (GetMyInvoices) prüfen/korrigieren und Zahlungen zuordnen, Zahlu
     python3 cli.py run --limit 1          # echter Lauf, max. 1 Buchung
     python3 cli.py review [--dry-run]     # unsichere Fälle einzeln entscheiden
     python3 cli.py status                 # letzte Läufe
+    python3 cli.py usd-auf-eur --beleg ID --umsatz ID [--dry-run]  # USD-Beleg auf EUR = Bankbetrag, nach "j"
     python3 cli.py aufraeumen [--dry-run] # echte Duplikate (gleiche Belegnr) löschen nach "j", unplausible Daten listen
     python3 cli.py init-regeln [--force]  # Standardbuchungen aus Historie ab 2025 erzeugen
 

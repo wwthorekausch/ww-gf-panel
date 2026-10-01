@@ -12,7 +12,7 @@ from modell import Beleg, Fall, Position, Rechnung, Standardregel, Umsatz
 class FakeClient:
     def __init__(self, nachlesen_status=100, nachlesen_brutto="49.99", nachlesen_kat="2819", fehler_bei=None):
         self.calls = []
-        self.v = {"status": str(nachlesen_status), "sumGross": nachlesen_brutto}
+        self.v = {"status": str(nachlesen_status), "sumGross": nachlesen_brutto, "currency": "EUR"}
         self.kat = nachlesen_kat
         self.fehler_bei = fehler_bei
 
@@ -296,3 +296,48 @@ def test_guard_kein_speichern_fremdwaehrung():
     with pytest.raises(actions.RegelVerletzung, match="Fremdwährung"):
         s.ausfuehren(fall_beleg(b=usd))
     assert schreibpfade(c) == []
+
+
+# --- USD-Beleg auf EUR mit Bankbetrag umstellen ---
+def usd_beleg(status=100, positionen=None):
+    pos = positionen or (Position("11", "2819", D("0"), D("48.69")),)
+    return Beleg("5", date(2026, 5, 21), "Bitwarden", D("48.69"), D("55.82"), "USD", status, "default", pos,
+                 roh={"id": "5", "objectName": "Voucher", "currency": "USD", "voucherDate": "2026-05-21",
+                      "supplierName": "Bitwarden", "creditDebit": "C", "taxType": "default", "voucherType": "VOU",
+                      "propertyExchangeRate": "0.87"})
+
+
+UMS_USD = Umsatz("1860067575", "1001", date(2026, 5, 21), D("-55.82"), "BITWARDEN", "x")
+
+
+def test_usd_auf_eur_body():
+    body = actions.usd_auf_eur_body(usd_beleg(), D("55.82"))
+    assert body["voucher"]["currency"] == "EUR" and "propertyExchangeRate" not in body["voucher"]
+    assert body["voucherPosSave"][0]["sumGross"] == 55.82 and body["voucherPosSave"][0]["accountingType"]["id"] == 2819
+
+
+def test_usd_auf_eur_ablauf():
+    c = FakeClient(nachlesen_brutto="55.82")
+    s, _ = schreiber(c)
+    s.usd_auf_eur(usd_beleg(), UMS_USD)
+    assert schreibpfade(c) == [("POST", "Voucher/Factory/saveVoucher"), ("PUT", "Voucher/5/bookAmount")]
+
+
+def test_usd_auf_eur_nachlesen_waehrung_falsch_kein_zuordnen():
+    c = FakeClient(nachlesen_brutto="55.82")
+    c.v["currency"] = "USD"
+    s, _ = schreiber(c)
+    with pytest.raises(actions.AbbruchNachSchreiben):
+        s.usd_auf_eur(usd_beleg(), UMS_USD)
+    assert ("PUT", "Voucher/5/bookAmount") not in c.calls
+
+
+def test_usd_auf_eur_guards():
+    s, _ = schreiber(FakeClient())
+    eur = Beleg(**{**usd_beleg().__dict__, "waehrung": "EUR"})
+    zwei = usd_beleg(positionen=(Position("11", "2819", D("0"), D("20")), Position("12", "2819", D("0"), D("28.69"))))
+    bezahlt = usd_beleg(status=1000)
+    eingang = Umsatz("1", "1001", date(2026, 5, 21), D("55.82"), "X", "x")
+    for b, u in ((eur, UMS_USD), (zwei, UMS_USD), (bezahlt, UMS_USD), (usd_beleg(), eingang)):
+        with pytest.raises(actions.RegelVerletzung):
+            s.usd_auf_eur(b, u)
