@@ -75,7 +75,8 @@ class Grenzen:
     gebuehren_max: Decimal = Decimal("100")
     tage_eindeutig: int = 5          # mehrere Kandidaten: genau einer in ±N Tagen gewinnt (Monatsabos)
     standard_kategorie_ids: frozenset[str] = frozenset()
-    aliase: tuple[tuple[str, str], ...] = ()   # (norm(lieferant), norm(alias)) aus config [aliase]
+    aliase: tuple[tuple[str, str], ...] = ()
+    ausgeschlossen: frozenset[str] = frozenset()  # norm(lieferant) — nie buchen (z.B. eigene Umbuchungen)   # (norm(lieferant), norm(alias)) aus config [aliase]
 
 
 @dataclass(frozen=True)
@@ -83,6 +84,7 @@ class LieferantWissen:
     kategorie_id: str
     steuer: str
     letzter_betrag: Decimal
+    fest: bool = False               # vom Nutzer festgelegt -> abweichende Kategorie wird korrigiert
 
 
 @dataclass(frozen=True)

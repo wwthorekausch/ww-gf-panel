@@ -174,7 +174,7 @@ def bewerte_beleg(beleg: Beleg, kandidaten: list[Umsatz], rueck: Counter, wissen
     korrektur = {}
     ist = beleg.kategorie_id
     if ist != w.kategorie_id:
-        if ist is not None and ist not in grenzen.standard_kategorie_ids:
+        if ist is not None and ist not in grenzen.standard_kategorie_ids and not w.fest:
             return fall(False, f"Kategorie {ist} statt gelernt {w.kategorie_id}", u)
         korrektur["kategorie_id"] = w.kategorie_id
     if beleg.waehrung == "USD" and bank != beleg.brutto_eur:
@@ -245,6 +245,8 @@ def bewerte_standard(umsatz: Umsatz, regeln: list[Standardregel], wissen: dict, 
 
 
 def einstufen(belege, rechnungen, umsaetze, wissen, regeln, grenzen, heute) -> list[Fall]:
+    gesperrt = [b for b in ab_stichtag(belege, heute) if norm(b.lieferant) in grenzen.ausgeschlossen]
+    belege = [b for b in belege if norm(b.lieferant) not in grenzen.ausgeschlossen]
     gueltig = ab_stichtag(belege, heute)
     vor_stichtag = [b for b in belege if b.datum is not None and b.datum < STICHTAG]
     unplausibel = [b for b in belege if b.datum is None or b.datum > heute]
@@ -261,6 +263,8 @@ def einstufen(belege, rechnungen, umsaetze, wissen, regeln, grenzen, heute) -> l
         vergeben.update(u.id for u in ks)
     for b in unplausibel:
         faelle.append(bewerte_beleg(b, [], Counter(), wissen, dup, grenzen, heute))
+    for b in gesperrt:
+        faelle.append(Fall("beleg", False, "Lieferant ausgeschlossen", b.datum, beleg=b))
 
     offen_r = [r for r in rechnungen if r.datum and r.datum >= STICHTAG]
     rest = [u for u in umsaetze if u.id not in vergeben]

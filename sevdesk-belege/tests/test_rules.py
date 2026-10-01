@@ -481,3 +481,19 @@ def test_lieferanten_ohne_historie():
           beleg(id="3", lieferant="Hetzner Online GmbH")]
     out = rules.lieferanten_ohne_historie(bs, W, HEUTE)
     assert [(k, n, b.id) for k, n, b in out] == [("rewe", 2, "1")]
+
+
+def test_ausgeschlossener_lieferant_nie_sicher_und_beansprucht_nichts():
+    g = Grenzen(ausgeschlossen=frozenset({"hetzner online"}))
+    u = umsatz()
+    faelle = rules.einstufen([beleg()], [], [u], W, [], g, HEUTE)
+    b = [f for f in faelle if f.art == "beleg"][0]
+    assert not b.sicher and b.umsatz is None and b.grund == "Lieferant ausgeschlossen"
+    assert any(f.umsatz and f.umsatz.id == "u1" for f in faelle if f.art == "ohne_beleg")
+
+
+def test_festgelegte_kategorie_wird_korrigiert():
+    from modell import LieferantWissen
+    fest = {"hetzner online": LieferantWissen("2819", "default:19", D("0"), fest=True)}
+    f = bewerte(beleg(kat="2"), wissen=fest)
+    assert f.sicher and f.korrektur == {"kategorie_id": "2819"}

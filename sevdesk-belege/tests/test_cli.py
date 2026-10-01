@@ -92,3 +92,10 @@ def test_feste_lieferanten_roundtrip(tmp_path):
     cli.speichere_fest(p, {"rewe": ("2", "default:7")})
     w = cli.lade_fest(p)
     assert w["rewe"].kategorie_id == "2" and w["rewe"].steuer == "default:7"
+
+
+def test_fest_mit_ausschluss(tmp_path):
+    p = tmp_path / "lieferanten.json"
+    p.write_text('{"rewe": {"kategorie_id": "72", "steuer": "default:7"}, "web wikinger": {"ausschliessen": true}}')
+    assert set(cli.lade_fest(p)) == {"rewe"}
+    assert cli.lade_ausgeschlossen(p) == frozenset({"web wikinger"})

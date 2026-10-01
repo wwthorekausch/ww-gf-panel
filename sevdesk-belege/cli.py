@@ -39,6 +39,7 @@ def lade_grenzen(config: configparser.ConfigParser) -> Grenzen:
         gebuehren_max=Decimal(g.get("gebuehren_max", str(d.gebuehren_max))),
         tage_eindeutig=int(g.get("tage_eindeutig", d.tage_eindeutig)),
         standard_kategorie_ids=frozenset(i.strip() for i in ids.split(",") if i.strip()),
+        ausgeschlossen=lade_ausgeschlossen(FEST_PFAD),
         aliase=tuple((rules.norm(k), rules.norm(a)) for k, v in
                      (config["aliase"].items() if config.has_section("aliase") else [])
                      for a in v.split(",") if a.strip()),
@@ -49,7 +50,14 @@ def lade_fest(pfad: Path) -> dict[str, LieferantWissen]:
     if not pfad.exists():
         return {}
     roh = json.loads(pfad.read_text(encoding="utf-8"))
-    return {k: LieferantWissen(v["kategorie_id"], v["steuer"], Decimal("0")) for k, v in roh.items()}
+    return {k: LieferantWissen(v["kategorie_id"], v["steuer"], Decimal("0"), fest=True)
+            for k, v in roh.items() if not v.get("ausschliessen")}
+
+
+def lade_ausgeschlossen(pfad: Path) -> frozenset[str]:
+    if not pfad.exists():
+        return frozenset()
+    return frozenset(k for k, v in json.loads(pfad.read_text(encoding="utf-8")).items() if v.get("ausschliessen"))
 
 
 def speichere_fest(pfad: Path, fest: dict[str, tuple[str, str]]) -> None:
