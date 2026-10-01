@@ -327,6 +327,29 @@ def cmd_gmi_hochladen(args) -> int:
     return 0
 
 
+def cmd_gmi_taggen(args) -> int:
+    """Alle GMI-Dokumente, die in sevDesk fehlen (Status nur_gmi, ab 2025), in GMI mit Tag 'Sevdesk' markieren."""
+    from modell import STICHTAG
+    erg, _, _, sevdesk, client = _gmi_abgleich()
+    docs = {e.dok.uid: e.dok for e in erg if e.status == "nur_gmi" and e.dok.datum and e.dok.datum >= STICHTAG}
+    conn = db.connect(MODULE_DIR)
+    schreiber = actions.Schreiber(sevdesk, conn, db.run_start(conn, args.dry_run), args.dry_run, 0)
+    schreiber.gmi = client
+    neu = schon = 0
+    for d in list(docs.values())[: args.limit]:
+        try:
+            if schreiber.gmi_taggen(d):
+                neu += 1
+            else:
+                schon += 1
+        except actions.Abbruch as ex:
+            print(f"STOPP bei GMI {d.uid}: {ex}")
+            return 1
+    print(f"{'DRY-RUN — ' if args.dry_run else ''}{neu} Dokumente mit 'Sevdesk' getaggt, {schon} hatten den Tag schon "
+          f"({len(docs)} fehlen in sevDesk). In GetMyInvoices nach Tag 'Sevdesk' filtern und PDFs laden.")
+    return 0
+
+
 def cmd_gmi_suche(args) -> int:
     """Zahlungen ohne Beleg in GetMyInvoices suchen (nur lesend). Bericht: gmi_bericht.csv (gitignored)."""
     import csv
@@ -395,6 +418,9 @@ def main() -> int:
         p.add_argument("--art", choices=("beleg", "rechnung", "standard"), help="nur diese Fallart")
     sub.add_parser("status")
     sub.add_parser("gmi-suche")
+    p = sub.add_parser("gmi-taggen")
+    p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--limit", type=int, default=1000)
     p = sub.add_parser("gmi-hochladen")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--limit", type=int, default=20)
@@ -410,7 +436,8 @@ def main() -> int:
     args = parser.parse_args()
     handlers = {"run": cmd_run, "review": cmd_review, "status": cmd_status, "init-regeln": cmd_init_regeln,
                 "aufraeumen": cmd_aufraeumen, "usd-auf-eur": cmd_usd_auf_eur,
-                "gmi-suche": cmd_gmi_suche, "gmi-hochladen": cmd_gmi_hochladen}
+                "gmi-suche": cmd_gmi_suche, "gmi-hochladen": cmd_gmi_hochladen,
+                "gmi-taggen": cmd_gmi_taggen}
     return handlers[args.command](args)
 
 

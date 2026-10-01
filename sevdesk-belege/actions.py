@@ -324,3 +324,11 @@ class Schreiber:
                 self.benutzte_umsaetze.add(umsatz.id)
         self.benutzte_umsaetze.add(umsatz.id)
         return "ok"
+
+    def gmi_taggen(self, dok) -> bool:
+        """Nur Tag 'Sevdesk' in GMI setzen (PDF lädt der Nutzer selbst über den Tag). False = schon getaggt."""
+        self._pruefe_datum(dok.datum)
+        if any(t.lower() == "sevdesk" for t in dok.tags):
+            return False
+        self._gmi_schreibe(f"documents/{dok.uid}", {"tags": list(dok.tags) + ["Sevdesk"]})
+        return True

@@ -18,6 +18,7 @@ Belegentwürfe (GetMyInvoices) prüfen/korrigieren und Zahlungen zuordnen, Zahlu
     python3 cli.py usd-auf-eur --beleg ID --umsatz ID [--dry-run]  # USD-Beleg auf EUR = Bankbetrag, nach "j"
     python3 cli.py gmi-suche               # Zahlungen ohne Beleg in GetMyInvoices suchen (nur lesend) -> gmi_bericht.csv
     python3 cli.py gmi-hochladen [--dry-run] [--limit N] [--umsatz ID]  # PDF aus GMI -> sevDesk-Beleg, zuordnen, GMI-Tag "Sevdesk"
+    python3 cli.py gmi-taggen [--dry-run]  # in sevDesk fehlende GMI-Dokumente mit Tag "Sevdesk" markieren (PDF-Download manuell)
     python3 cli.py aufraeumen [--dry-run] # echte Duplikate (gleiche Belegnr) löschen nach "j", unplausible Daten listen
     python3 cli.py init-regeln [--force]  # Standardbuchungen aus Historie ab 2025 erzeugen
 

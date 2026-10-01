@@ -481,3 +481,21 @@ def test_gmi_beschreibung_ohne_nummer():
                        "grossAmount": 8.56, "currency": "EUR"})
     plan = gmi.UploadPlan(True, "sicher", "72", "default", D("7"), D("8.56"))
     assert actions.gmi_beleg_body(d, U, plan, "t.pdf")["voucher"]["description"] == "GMI-5"
+
+
+def test_gmi_taggen_nur_tag():
+    c, g = UploadClient(), FakeGmi()
+    s, _ = schreiber(c)
+    s.gmi = g
+    d, _, _ = plan_fall()
+    s.gmi_taggen(d)
+    assert schreibpfade(c) == [] and g.calls == [("PUT", "documents/77", {"tags": ["Software", "Sevdesk"]})]
+
+
+def test_gmi_taggen_vor_stichtag_verweigert():
+    import gmi
+    d = gmi.parse_dok({"documentUid": 1, "companyName": "X", "documentDate": "2024-12-31", "grossAmount": 1})
+    s, _ = schreiber(UploadClient())
+    s.gmi = FakeGmi()
+    with pytest.raises(actions.RegelVerletzung):
+        s.gmi_taggen(d)
