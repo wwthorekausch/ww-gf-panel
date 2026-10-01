@@ -205,3 +205,138 @@ def test_usd_exakt_keine_korrektur():
 def test_eingang_ist_kein_kandidat_fuer_beleg():
     f = bewerte(beleg(), [umsatz(betrag="49.99")])
     assert f.grund == "keine passende Zahlung"
+
+
+# --- Task 4: Rechnungen, Standardbuchungen, Einstufung ---
+def rechnung(id="r1", nummer="RE-10001", datum=date(2026, 9, 1), typ="RE", status=200, offen="1190.00", kunde="Beispiel Kunde GmbH"):
+    return Rechnung(id=id, nummer=nummer, datum=datum, typ=typ, status=status, offen=D(offen), kunde=kunde)
+
+
+def eingang(**kw):
+    base = dict(id="e1", datum=date(2026, 9, 7), betrag="1190.00", name="Beispiel Kunde GmbH", zweck="RE-10001")
+    base.update(kw)
+    return umsatz(**base)
+
+
+def bewerte_r(r, us):
+    k = rules.kandidaten_rechnung(r, us)
+    return rules.bewerte_rechnung(r, k, Counter(u.id for u in k))
+
+
+def test_rechnung_sicher():
+    f = bewerte_r(rechnung(), [eingang()])
+    assert f.sicher and f.art == "rechnung" and f.umsatz.id == "e1"
+
+
+def test_rechnung_ohne_nummer_im_zweck_review():
+    f = bewerte_r(rechnung(), [eingang(zweck="Danke")])
+    assert not f.sicher and "Rechnungsnummer" in f.grund
+
+
+def test_rechnung_gutschrift_storno_teilrechnung_review():
+    for typ in ("GU", "SR", "TR", "ER"):
+        assert not bewerte_r(rechnung(typ=typ), [eingang()]).sicher
+
+
+def test_rechnung_teilbezahlt_review():
+    f = bewerte_r(rechnung(status=750), [eingang()])
+    assert not f.sicher and f.grund == "teilbezahlt"
+
+
+def test_rechnung_zahlung_vor_rechnungsdatum_kein_kandidat():
+    assert rules.kandidaten_rechnung(rechnung(datum=date(2026, 9, 8)), [eingang()]) == []
+
+
+REGELN = [
+    Standardregel("Lohn / Gehalt: Max Mustermann", "Max Mustermann", "lohn", "50", "Max Mustermann"),
+    Standardregel("Finanzamt Kiel", "Finanzamt Kiel", "finanzamt", "60", "Finanzamt Kiel"),
+    Standardregel("Bankgebühren", r"kontof(ü|ue)hrung|entgelt", "gebuehren", "70", "Bank"),
+]
+W_LOHN = rules.lerne(historie(lieferant="Max Mustermann", kat="50", satz="0", brutto="2000", dok=False), G)
+
+
+def test_standard_lohn_innerhalb_10_prozent():
+    f = rules.bewerte_standard(umsatz(betrag="-2200", name="Max Mustermann", zweck="Gehalt 09"), REGELN, W_LOHN, G)
+    assert f.sicher and f.art == "standard" and f.regel.art == "lohn"
+
+
+def test_standard_lohn_ueber_10_prozent_review():
+    f = rules.bewerte_standard(umsatz(betrag="-2201", name="Max Mustermann", zweck="Gehalt"), REGELN, W_LOHN, G)
+    assert not f.sicher and "Vormonat" in f.grund
+
+
+def test_standard_lohn_ohne_historie_review():
+    f = rules.bewerte_standard(umsatz(betrag="-2000", name="Max Mustermann", zweck=""), REGELN, {}, G)
+    assert not f.sicher and f.grund == "kein Vormonatsbetrag"
+
+
+def test_standard_finanzamt_immer_review():
+    f = rules.bewerte_standard(umsatz(betrag="-50", name="Finanzamt Kiel", zweck="UST VZ 08"), REGELN, {}, G)
+    assert not f.sicher and f.art == "standard" and "Finanzamt" in f.grund
+
+
+def test_standard_gebuehren():
+    assert rules.bewerte_standard(umsatz(betrag="-12.50", name="", zweck="Kontoführung 09/2026"), REGELN, {}, G).sicher
+    assert not rules.bewerte_standard(umsatz(betrag="-100.01", name="", zweck="Entgelt"), REGELN, {}, G).sicher
+
+
+def test_standard_mehrere_regeln_review():
+    f = rules.bewerte_standard(umsatz(betrag="-5", name="Finanzamt Kiel", zweck="Entgelt"), REGELN, {}, G)
+    assert not f.sicher and f.grund == "mehrere Standardregeln passen"
+
+
+def test_ohne_beleg():
+    f = rules.bewerte_standard(umsatz(name="Unbekannt AG", zweck="x"), REGELN, {}, G)
+    assert f.art == "ohne_beleg" and not f.sicher
+
+
+def test_umsatz_leer_kein_absturz():
+    f = rules.bewerte_standard(umsatz(betrag="0", name="", zweck=""), REGELN, {}, G)
+    assert f.art == "ohne_beleg"
+
+
+def test_einstufen_reihenfolge_und_zuteilung():
+    b = beleg()
+    u_beleg = umsatz(id="u1")
+    u_rech = eingang()
+    u_lohn = umsatz(id="u3", datum=date(2026, 9, 30), betrag="-2000", name="Max Mustermann", zweck="Gehalt")
+    u_rest = umsatz(id="u4", datum=date(2026, 9, 20), betrag="-15", name="Unbekannt", zweck="x")
+    wissen = {**W, **W_LOHN}
+    faelle = rules.einstufen([b], [rechnung()], [u_beleg, u_rech, u_lohn, u_rest], wissen, REGELN, G, HEUTE)
+    arten = {(f.art, f.umsatz.id if f.umsatz else None) for f in faelle}
+    assert arten == {("beleg", "u1"), ("rechnung", "e1"), ("standard", "u3"), ("ohne_beleg", "u4")}
+    assert [f.datum for f in faelle] == sorted((f.datum for f in faelle), reverse=True)
+
+
+def test_umsatz_nur_einmal_vergeben():
+    # Beleg mit abweichender Steuer -> Review, beansprucht aber u3; Lohnregel darf u3 nicht zusätzlich nehmen
+    b = beleg(lieferant="Max Mustermann", brutto="2000", datum=date(2026, 9, 28))
+    u = umsatz(id="u3", datum=date(2026, 9, 30), betrag="-2000", name="Max Mustermann", zweck="Gehalt")
+    faelle = rules.einstufen([b], [], [u], W_LOHN, REGELN, G, HEUTE)
+    assert len([f for f in faelle if f.umsatz and f.umsatz.id == "u3"]) == 1
+    assert faelle[0].art == "beleg"
+
+
+def test_einstufen_beleg_vor_stichtag_ignoriert():
+    alt = beleg(datum=date(2024, 12, 30))
+    assert rules.einstufen([alt], [], [], W, [], G, HEUTE) == []
+
+
+def test_baue_standardregeln_filtert_ausreisser():
+    namen = {"50": "Lohn / Gehalt", "60": "bezahlte Umsatzsteuer", "70": "Kontoführung / Kartengebühren"}
+    h = (historie(lieferant="Max Mustermann", kat="50", satz="0", dok=False)
+         + historie(lieferant="Finanzamt Kiel", kat="60", satz="0", dok=False)
+         + historie(lieferant="Beispiel Telefon GmbH", kat="60", satz="0", dok=False)   # Ausreißer: USt bei Telefonanbieter
+         + historie(lieferant="Hetzner Online GmbH", kat="2819", dok=True))               # hat Dokument -> keine Regel
+    regeln = rules.baue_standardregeln(h, namen, G)
+    assert {(r.art, r.lieferant) for r in regeln} == {
+        ("lohn", "Max Mustermann"), ("finanzamt", "Finanzamt Kiel"), ("gebuehren", "Bank")}
+
+
+def test_zusammenfassung():
+    f1 = Fall("beleg", True, "sicher", HEUTE, umsatz=umsatz(betrag="-10"))
+    f2 = Fall("ohne_beleg", False, "kein Beleg gefunden", HEUTE, umsatz=umsatz(betrag="-5"))
+    f3 = Fall("beleg", False, "keine passende Zahlung", HEUTE, beleg=beleg(brutto="7"))
+    z = rules.zusammenfassung([f1, f2, f3])
+    assert z == {"sicher": (1, D("10")), "review": (0, D("0")), "ohne_beleg": (1, D("5")),
+                 "beleg_ohne_zahlung": (1, D("7"))}

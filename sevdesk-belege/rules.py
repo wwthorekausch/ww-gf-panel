@@ -4,11 +4,20 @@ from collections import Counter, defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
 
-from modell import STICHTAG, Beleg, Fall, Grenzen, LieferantWissen, Umsatz
+from modell import STICHTAG, Beleg, Fall, Grenzen, LieferantWissen, Rechnung, Standardregel, Umsatz
 
 _RECHTSFORM = re.compile(
     r"\b(gmbh|mbh|co|kg|ag|ug|ohg|gbr|ltd|inc|llc|pte|bv|sarl|sarlau|sa|se|ek|ev|uab|oy|ab|plc)\b"
 )
+
+ART_NACH_KATEGORIE = {
+    "Lohn / Gehalt": "lohn",
+    "Krankenkasse": "krankenkasse",
+    "Miete / Pacht": "miete",
+    "Kontoführung / Kartengebühren": "gebuehren",
+    "bezahlte Umsatzsteuer": "finanzamt",
+}
+GEBUEHREN_MUSTER = r"kontof(ü|ue)hrung|entgelt|geb(ü|ue)hr|kartengeb"
 
 
 def norm(text: str) -> str:
@@ -113,3 +122,129 @@ def bewerte_beleg(beleg: Beleg, kandidaten: list[Umsatz], rueck: Counter, wissen
     if korrektur and len(beleg.positionen) != 1:
         return fall(False, "mehrere Positionen, Korrektur nicht eindeutig", u)
     return fall(True, "sicher", u, korrektur)
+
+
+def kandidaten_rechnung(rechnung: Rechnung, umsaetze: list[Umsatz]) -> list[Umsatz]:
+    return [u for u in umsaetze if u.betrag > 0 and u.betrag == rechnung.offen and u.datum >= rechnung.datum]
+
+
+def bewerte_rechnung(rechnung: Rechnung, kandidaten: list[Umsatz], rueck: Counter) -> Fall:
+    def fall(sicher, grund, u):
+        return Fall("rechnung", sicher, grund, u.datum, umsatz=u, rechnung=rechnung)
+
+    u = kandidaten[0]
+    if len(kandidaten) > 1:
+        return fall(False, f"{len(kandidaten)} mögliche Zahlungseingänge", u)
+    if rueck[u.id] > 1:
+        return fall(False, "Zahlung passt zu mehreren Rechnungen", u)
+    if rechnung.typ != "RE":
+        return fall(False, f"Rechnungstyp {rechnung.typ}", u)
+    if rechnung.status != 200:
+        return fall(False, "teilbezahlt", u)
+    if not rechnung.nummer or rechnung.nummer.lower() not in f"{u.zweck} {u.name}".lower():
+        return fall(False, "Rechnungsnummer nicht im Verwendungszweck", u)
+    return fall(True, "sicher", u)
+
+
+def passende_regeln(umsatz: Umsatz, regeln: list[Standardregel]) -> list[Standardregel]:
+    text = f"{umsatz.name} {umsatz.zweck}"
+    return [r for r in regeln if re.search(r.muster, text, re.IGNORECASE)]
+
+
+def bewerte_standard(umsatz: Umsatz, regeln: list[Standardregel], wissen: dict, grenzen: Grenzen) -> Fall:
+    if umsatz.betrag >= 0:
+        grund = "Zahlungseingang ohne passende Rechnung" if umsatz.betrag > 0 else "Betrag 0"
+        return Fall("ohne_beleg", False, grund, umsatz.datum, umsatz=umsatz)
+    treffer = passende_regeln(umsatz, regeln)
+    if not treffer:
+        return Fall("ohne_beleg", False, "kein Beleg gefunden", umsatz.datum, umsatz=umsatz)
+    regel = treffer[0]
+
+    def fall(sicher, grund):
+        return Fall("standard", sicher, grund, umsatz.datum, umsatz=umsatz, regel=regel)
+
+    if len(treffer) > 1:
+        return fall(False, "mehrere Standardregeln passen")
+    betrag = -umsatz.betrag
+    if regel.art == "finanzamt":
+        return fall(False, "Finanzamt: Steuerart bestätigen")
+    if regel.art == "gebuehren":
+        if betrag > grenzen.gebuehren_max:
+            return fall(False, f"Gebühr über {grenzen.gebuehren_max} €")
+        return fall(True, "Standardbuchung")
+    if regel.art in ("lohn", "krankenkasse", "miete"):
+        w = wissen.get(norm(regel.lieferant))
+        if w is None:
+            return fall(False, "kein Vormonatsbetrag")
+        abw = abweichung_prozent(betrag, w.letzter_betrag)
+        if abw > grenzen.lohn_toleranz_prozent:
+            return fall(False, f"Betrag weicht {abw:.0f} % vom Vormonat ab")
+        return fall(True, "Standardbuchung")
+    return fall(False, f"unbekannte Regelart {regel.art}")
+
+
+def einstufen(belege, rechnungen, umsaetze, wissen, regeln, grenzen, heute) -> list[Fall]:
+    belege = ab_stichtag(belege, heute)
+    umsaetze = ab_stichtag(umsaetze, heute)
+    faelle, vergeben = [], set()
+
+    dup = duplikate(belege)
+    kand = {b.id: kandidaten_beleg(b, umsaetze, grenzen) for b in belege}
+    rueck = Counter(u.id for ks in kand.values() for u in ks)
+    for b in belege:
+        faelle.append(bewerte_beleg(b, kand[b.id], rueck, wissen, dup, grenzen, heute))
+        vergeben.update(u.id for u in kand[b.id])
+
+    offen_r = [r for r in rechnungen if r.datum and r.datum >= STICHTAG]
+    rest = [u for u in umsaetze if u.id not in vergeben]
+    kand_r = {r.id: kandidaten_rechnung(r, rest) for r in offen_r}
+    rueck_r = Counter(u.id for ks in kand_r.values() for u in ks)
+    for r in offen_r:
+        if kand_r[r.id]:
+            faelle.append(bewerte_rechnung(r, kand_r[r.id], rueck_r))
+            vergeben.update(u.id for u in kand_r[r.id])
+
+    for u in umsaetze:
+        if u.id not in vergeben:
+            faelle.append(bewerte_standard(u, regeln, wissen, grenzen))
+
+    return sorted(faelle, key=lambda f: f.datum, reverse=True)
+
+
+def baue_standardregeln(historie: list[Beleg], kategorie_namen: dict[str, str], grenzen: Grenzen) -> list[Standardregel]:
+    gruppen = defaultdict(list)
+    for b in historie:
+        if not b.hat_dokument and b.datum and b.datum >= STICHTAG and norm(b.lieferant):
+            gruppen[norm(b.lieferant)].append(b)
+    regeln = []
+    for key, bs in gruppen.items():
+        kats = {b.kategorie_id for b in bs}
+        if len(bs) < grenzen.min_historie or len(kats) != 1:
+            continue
+        kat = kats.pop()
+        art = ART_NACH_KATEGORIE.get(kategorie_namen.get(kat, ""))
+        if art is None or (art == "finanzamt" and "finanzamt" not in key):
+            continue
+        lieferant = bs[0].lieferant.strip()
+        regeln.append(Standardregel(f"{kategorie_namen[kat]}: {lieferant}", re.escape(lieferant), art, kat, lieferant))
+    gebuehren_id = next((i for i, n in kategorie_namen.items() if n == "Kontoführung / Kartengebühren"), None)
+    if gebuehren_id:
+        regeln.append(Standardregel("Bankgebühren", GEBUEHREN_MUSTER, "gebuehren", gebuehren_id, "Bank"))
+    return sorted(regeln, key=lambda r: r.name)
+
+
+def zusammenfassung(faelle: list[Fall]) -> dict[str, tuple[int, Decimal]]:
+    z = {k: [0, Decimal("0")] for k in ("sicher", "review", "ohne_beleg", "beleg_ohne_zahlung")}
+    for f in faelle:
+        if f.sicher:
+            key = "sicher"
+        elif f.art == "ohne_beleg":
+            key = "ohne_beleg"
+        elif f.umsatz is None:
+            key = "beleg_ohne_zahlung"
+        else:
+            key = "review"
+        betrag = abs(f.umsatz.betrag) if f.umsatz else f.beleg.brutto_eur
+        z[key][0] += 1
+        z[key][1] += betrag
+    return {k: (n, s) for k, (n, s) in z.items()}
