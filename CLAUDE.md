@@ -15,6 +15,7 @@ Sammlung lokaler Automatisierungs-Skripte für Geschäftsführungs-Tätigkeiten 
 ## Teilbereiche
 
 - [sevdesk-mahnwesen](sevdesk-mahnwesen/CLAUDE.md) — Übersicht offener Rechnungen, Mahnstufen, Ausblenden nicht relevanter Rechnungen (sevDesk API)
+- [sevdesk-belege](sevdesk-belege/CLAUDE.md) — Belege prüfen/korrigieren, Zahlungen zuordnen, Standardbuchungen (sevDesk API)
 - [bwa](bwa/CLAUDE.md) — monatliche BWA-Daten (JSON) + Auswertungen zum Monatsvergleich
 
 ## Zentrale Ausführung

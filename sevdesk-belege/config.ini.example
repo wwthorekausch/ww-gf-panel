@@ -1,0 +1,13 @@
+; Keine Secrets. Token liegt in macOS Keychain (Service ww-gf-cockpit-sevdesk).
+[grenzen]
+usd_toleranz_prozent = 3
+tage_vorher = 5
+tage_nachher = 45
+max_betrag = 2000
+min_historie = 2
+lohn_toleranz_prozent = 10
+gebuehren_max = 100
+
+[kategorien]
+; AccountingType-IDs, die GetMyInvoices als Platzhalter setzt — gelten als "leer" und werden korrigiert
+standard_ids =
