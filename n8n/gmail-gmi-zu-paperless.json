@@ -1,0 +1,97 @@
+{
+  "name": "Gmail GMI → Paperless (einmalig, Label paperless)",
+  "nodes": [
+    {
+      "parameters": { "rule": { "interval": [ { "field": "minutes", "minutesInterval": 30 } ] } },
+      "id": "a1",
+      "name": "Alle 30 Minuten",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "returnAll": false,
+        "limit": 50,
+        "simple": false,
+        "filters": { "q": "label:GMI -label:paperless has:attachment" },
+        "options": { "downloadAttachments": true, "dataPropertyAttachmentsPrefixName": "attachment_" }
+      },
+      "id": "a2",
+      "name": "Gmail: GMI-Mails holen",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [220, 0],
+      "credentials": { "gmailOAuth2": { "id": "GMAIL_CREDENTIAL_ID", "name": "Gmail" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Ein Item pro PDF-Anhang; andere Anhänge (Logos, Signaturen) werden übersprungen\nconst out = [];\nfor (const item of $input.all()) {\n  for (const bin of Object.values(item.binary || {})) {\n    const name = (bin.fileName || '').toLowerCase();\n    const istPdf = (bin.mimeType || '').includes('pdf') || name.endsWith('.pdf');\n    if (!istPdf) continue;\n    out.push({\n      json: { messageId: item.json.id, fileName: bin.fileName, subject: item.json.subject || '' },\n      binary: { document: bin },\n    });\n  }\n}\nreturn out;"
+      },
+      "id": "a3",
+      "name": "PDF-Anhänge aufteilen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://paperless-dm4gvs1uhywditsblqku0t4j.wikinger.io/api/documents/post_document/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            { "parameterType": "formBinaryData", "name": "document", "inputDataFieldName": "document" },
+            { "name": "title", "value": "={{ $json.fileName.replace(/\\.pdf$/i, '') }}" }
+          ]
+        },
+        "options": { "timeout": 60000 }
+      },
+      "id": "a4",
+      "name": "Paperless: Dokument hochladen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 0],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "credentials": { "httpHeaderAuth": { "id": "PAPERLESS_CREDENTIAL_ID", "name": "Paperless Token" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Erst nach erfolgreichem Upload: jede Mail dieses Laufs genau einmal markieren\nconst ids = [...new Set($('PDF-Anhänge aufteilen').all().map(i => i.json.messageId))];\nreturn ids.map(id => ({ json: { messageId: id } }));"
+      },
+      "id": "a5",
+      "name": "Mail-IDs sammeln",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 0]
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.messageId }}",
+        "labelIds": ["PAPERLESS_LABEL_ID"]
+      },
+      "id": "a6",
+      "name": "Gmail: Label paperless setzen",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1100, 0],
+      "credentials": { "gmailOAuth2": { "id": "GMAIL_CREDENTIAL_ID", "name": "Gmail" } }
+    }
+  ],
+  "connections": {
+    "Alle 30 Minuten": { "main": [[{ "node": "Gmail: GMI-Mails holen", "type": "main", "index": 0 }]] },
+    "Gmail: GMI-Mails holen": { "main": [[{ "node": "PDF-Anhänge aufteilen", "type": "main", "index": 0 }]] },
+    "PDF-Anhänge aufteilen": { "main": [[{ "node": "Paperless: Dokument hochladen", "type": "main", "index": 0 }]] },
+    "Paperless: Dokument hochladen": { "main": [[{ "node": "Mail-IDs sammeln", "type": "main", "index": 0 }]] },
+    "Mail-IDs sammeln": { "main": [[{ "node": "Gmail: Label paperless setzen", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false
+}
