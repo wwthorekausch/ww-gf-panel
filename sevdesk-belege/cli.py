@@ -68,6 +68,12 @@ def verarbeite(faelle: list[Fall], schreiber, conn) -> dict:
     return z
 
 
+def nur_umsatz(faelle: list[Fall], umsatz_id: str | None) -> list[Fall]:
+    if umsatz_id is None:
+        return faelle
+    return [f for f in faelle if f.umsatz is not None and f.umsatz.id == umsatz_id]
+
+
 def _beleg_id(f: Fall) -> str:
     if f.beleg:
         return f.beleg.id
@@ -109,7 +115,7 @@ def cmd_run(args) -> int:
     grenzen = lade_grenzen(_config())
     client = SevdeskClient(keychain_token(KEYCHAIN_SERVICE))
     _, faelle = _einstufen(client, grenzen)
-    sicher = [f for f in faelle if f.sicher]
+    sicher = nur_umsatz([f for f in faelle if f.sicher], args.umsatz)
     for f in sicher:
         print(_zeile(f))
     conn = db.connect(MODULE_DIR)
@@ -138,7 +144,7 @@ def cmd_review(args) -> int:
     _, faelle = _einstufen(client, grenzen)
     conn = db.connect(MODULE_DIR)
     abgelehnt = db.abgelehnt(conn)
-    offen = [f for f in faelle if not f.sicher and f.umsatz and f.art in ("beleg", "rechnung", "standard")
+    offen = [f for f in nur_umsatz(faelle, args.umsatz) if not f.sicher and f.umsatz and f.art in ("beleg", "rechnung", "standard")
              and (f.art, _beleg_id(f), f.umsatz.id) not in abgelehnt]
     run_id = db.run_start(conn, args.dry_run)
     schreiber = actions.Schreiber(client, conn, run_id, args.dry_run, args.limit)
@@ -202,6 +208,7 @@ def main() -> int:
         p = sub.add_parser(name)
         p.add_argument("--dry-run", action="store_true")
         p.add_argument("--limit", type=int, default=20)
+        p.add_argument("--umsatz", help="nur den Fall mit dieser Umsatz-ID bearbeiten")
     sub.add_parser("status")
     p = sub.add_parser("init-regeln")
     p.add_argument("--force", action="store_true")

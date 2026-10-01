@@ -74,3 +74,8 @@ def test_verarbeite_stoppt_nach_abbruch_mit_schreiben():
     s = NachSchreibenStub()
     z = cli.verarbeite([fall(1), fall(2)], s, c)
     assert s.n == 1 and z["gestoppt"] is True and z["abgebrochen"] == 1
+
+
+def test_nur_umsatz_filtert_auf_einen_fall():
+    assert [f.umsatz.id for f in cli.nur_umsatz([fall(1), fall(2), fall(3)], "2")] == ["2"]
+    assert [f.umsatz.id for f in cli.nur_umsatz([fall(1), fall(2)], None)] == ["1", "2"]
