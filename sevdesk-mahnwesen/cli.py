@@ -7,6 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from shared.config import load_config
+from shared.keychain import keychain_token
 from shared.sevdesk_client import SevdeskClient
 
 import db
@@ -15,7 +16,7 @@ MODULE_DIR = Path(__file__).parent
 
 
 def build_client(config) -> SevdeskClient:
-    return SevdeskClient(config["sevdesk"]["api_token"])
+    return SevdeskClient(keychain_token("ww-gf-cockpit-sevdesk"))
 
 
 def cmd_sync(args, config) -> None:

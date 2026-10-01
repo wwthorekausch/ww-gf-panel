@@ -1,6 +1,3 @@
-[sevdesk]
-api_token = DEIN_TOKEN
-
 [mahnstufen]
 stufe_1_tage = 7
 stufe_2_tage = 14

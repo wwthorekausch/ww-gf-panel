@@ -4,11 +4,9 @@
 
 ## Setup
 
-1. `config.ini` in diesem Ordner anlegen (gitignored):
+1. API-Token in macOS Keychain: `security add-generic-password -s ww-gf-cockpit-sevdesk -a sevdesk -w`
+   `config.ini` in diesem Ordner anlegen (gitignored, keine Secrets):
    ```ini
-   [sevdesk]
-   api_token = DEIN_TOKEN
-
    [mahnstufen]
    stufe_1_tage = 7
    stufe_2_tage = 14
