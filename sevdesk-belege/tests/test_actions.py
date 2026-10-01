@@ -166,3 +166,82 @@ def test_speichern_body_usd_setzt_kurs():
     body = actions.beleg_speichern_body(b, "2819", D("71.82"))
     assert body["voucher"]["status"] == 100 and body["voucher"]["propertyExchangeRate"] == "0.89775"
     assert body["voucherPosSave"][0]["sumGross"] == 71.82
+
+
+# --- Final-Review-Fixes ---
+class GetFehlerClient(FakeClient):
+    def get(self, path, params=None):
+        self.calls.append(("GET", path))
+        raise RuntimeError("HTTP 500")
+
+
+def test_limit_zaehlt_versuche_nicht_nur_erfolge():
+    # C1: abgebrochene Fälle verbrauchen Limit
+    c = FakeClient(nachlesen_brutto="1.00")
+    s, _ = schreiber(c, limit=1)
+    with pytest.raises(actions.Abbruch):
+        s.ausfuehren(fall_beleg())
+    with pytest.raises(actions.LimitErreicht):
+        s.ausfuehren(fall_beleg())
+    assert len(schreibpfade(c)) == 1
+
+
+def test_abbruch_nach_schreiben_eigener_typ():
+    # C1: Abbruch nach erfolgtem Schreibvorgang muss Lauf stoppen können
+    s, _ = schreiber(FakeClient(nachlesen_brutto="1.00"))
+    with pytest.raises(actions.AbbruchNachSchreiben):
+        s.ausfuehren(fall_beleg())
+
+
+def test_abbruch_ohne_schreiben_normaler_typ():
+    s, _ = schreiber(FakeClient())
+    pos = (Position("11", "2819", D("19"), D("20")), Position("12", "2819", D("19"), D("29.99")))
+    with pytest.raises(actions.Abbruch) as e:
+        s.ausfuehren(fall_beleg(b=beleg(positionen=pos), korrektur={"kategorie_id": "2819"}))
+    assert not isinstance(e.value, actions.AbbruchNachSchreiben)
+
+
+def test_nachlesen_get_fehler_wird_abbruch():
+    # I5
+    s, _ = schreiber(GetFehlerClient())
+    with pytest.raises(actions.AbbruchNachSchreiben, match="Nachlesen"):
+        s.ausfuehren(fall_beleg())
+
+
+def test_standard_unerwartete_antwort_wird_abbruch():
+    # I5
+    class LeereAntwort(FakeClient):
+        def post(self, path, json=None):
+            self.calls.append(("POST", path))
+            return {"objects": {}}
+    s, _ = schreiber(LeereAntwort())
+    u = Umsatz("79", "1001", date(2026, 9, 30), D("-12.50"), "", "Entgelt")
+    r = Standardregel("Bankgebühren", "entgelt", "gebuehren", "70", "Bank")
+    with pytest.raises(actions.AbbruchNachSchreiben):
+        s.ausfuehren(Fall("standard", True, "Standardbuchung", u.datum, umsatz=u, regel=r))
+
+
+def test_kategorie_fehlt_abbruch_vor_schreiben():
+    # I5
+    c = FakeClient()
+    s, _ = schreiber(c)
+    with pytest.raises(actions.Abbruch, match="Kategorie"):
+        s.ausfuehren(fall_beleg(b=beleg(positionen=())))
+    assert schreibpfade(c) == []
+
+
+def test_umsatz_nur_einmal_pro_lauf():
+    # I6
+    c = FakeClient()
+    s, _ = schreiber(c)
+    s.ausfuehren(fall_beleg(b=beleg(status=100)))
+    with pytest.raises(actions.Abbruch, match="bereits"):
+        s.ausfuehren(fall_beleg(b=beleg(status=100)))
+    assert len(schreibpfade(c)) == 1
+
+
+def test_kurs_auf_6_stellen_gerundet():
+    # I8
+    b = Beleg("5", date(2026, 9, 21), "X", D("1.00"), D("3"), "USD", 50, "default",
+              (Position("11", "2819", D("0"), D("1.00")),), roh={})
+    assert actions.beleg_speichern_body(b, "2819", D("1.01"))["voucher"]["propertyExchangeRate"] == "0.336667"

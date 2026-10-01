@@ -340,3 +340,61 @@ def test_zusammenfassung():
     z = rules.zusammenfassung([f1, f2, f3])
     assert z == {"sicher": (1, D("10")), "review": (0, D("0")), "ohne_beleg": (1, D("5")),
                  "beleg_ohne_zahlung": (1, D("7"))}
+
+
+# --- Final-Review-Fixes ---
+def test_gebuehren_muster_nur_bankentgelte():
+    # I2
+    regel = Standardregel("Bankgebühren", rules.GEBUEHREN_MUSTER, "gebuehren", "70", "Bank")
+    treffer = lambda zweck: bool(rules.passende_regeln(umsatz(name="", zweck=zweck), [regel]))
+    assert treffer("ENTGELT Preis für SEPA Eingang")
+    assert treffer("Kontoführung 09/2026")
+    assert not treffer("Beispielprogramm Teilnahmegebuehr")
+    assert not treffer("Nutzungsentgelt Plattform")
+    assert not treffer("Lizenzgebühr 2026")
+
+
+def test_baue_standardregeln_keine_gebuehrenregel_aus_lieferant():
+    # I2: Gebühren nur über Seed-Muster, keine Regel auf Konto-/Banknamen
+    namen = {"70": "Kontoführung / Kartengebühren"}
+    h = historie(lieferant="Beispielbank Hauptkonto", kat="70", satz="0", dok=False)
+    assert [r.name for r in rules.baue_standardregeln(h, namen, G)] == ["Bankgebühren"]
+
+
+def test_beleg_vor_stichtag_beansprucht_zahlung():
+    # I3: Zahlung eines Dez-2024-Belegs darf nicht als Standardbuchung sicher werden
+    alt = beleg(lieferant="Max Mustermann", brutto="2000", datum=date(2024, 12, 30))
+    u = umsatz(id="u9", datum=date(2025, 1, 2), betrag="-2000", name="Max Mustermann", zweck="Gehalt")
+    faelle = rules.einstufen([alt], [], [u], W_LOHN, REGELN, G, HEUTE)
+    assert not any(f.sicher for f in faelle)
+    assert not any(f.art == "standard" for f in faelle)
+
+
+def test_beleg_zukunftsdatum_erscheint_als_fall():
+    # I3: OCR-Fehler (2030) muss sichtbar werden
+    faelle = rules.einstufen([beleg(datum=date(2030, 7, 26))], [], [], W, [], G, HEUTE)
+    assert [(f.art, f.sicher, f.grund) for f in faelle] == [("beleg", False, "Belegdatum fehlt oder in der Zukunft")]
+
+
+def test_rechnungsnummer_kein_teiltreffer():
+    # I4
+    f = bewerte_r(rechnung(nummer="RE-100"), [eingang(zweck="RE-1001")])
+    assert not f.sicher and "Rechnungsnummer" in f.grund
+
+
+def test_rechnungsnummer_mit_text_drumherum():
+    f = bewerte_r(rechnung(), [eingang(zweck="Zahlung der Rechnung RE-10001 vom 02.09.2026")])
+    assert f.sicher
+
+
+def test_review_usd_vorschlag_bankbetrag():
+    # I7: auch Review-Fälle tragen den Euro-Bankbetrag als Korrektur
+    u = umsatz(betrag="-71.82", name="BITWARDEN")
+    f = bewerte(usd_beleg("69.73"), [u], wissen={})
+    assert not f.sicher and f.korrektur == {"brutto_eur": D("71.82")}
+
+
+def test_review_kategorie_vorschlag_gelernt():
+    # I7
+    f = bewerte(beleg(kat="1111"))
+    assert not f.sicher and f.korrektur == {"kategorie_id": "2819"}

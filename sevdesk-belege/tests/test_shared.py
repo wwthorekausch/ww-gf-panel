@@ -59,3 +59,22 @@ def test_retry_gibt_nach_3_versuchen_auf(monkeypatch):
     monkeypatch.setattr(sevdesk_client.time, "sleep", lambda s: None)
     with pytest.raises(RuntimeError, match="HTTP 503"):
         client.get("Voucher")
+
+
+def test_post_put_kein_retry_bei_5xx(monkeypatch):
+    # I1: nicht-idempotente Schreibvorgänge dürfen bei 5xx nicht wiederholt werden
+    client = sevdesk_client.SevdeskClient("t")
+    aufrufe = []
+    monkeypatch.setattr(client._session, "request", lambda *a, **k: aufrufe.append(1) or FakeResp(502))
+    monkeypatch.setattr(sevdesk_client.time, "sleep", lambda s: None)
+    with pytest.raises(RuntimeError, match="HTTP 502"):
+        client.post("Voucher/Factory/saveVoucher", json={})
+    assert len(aufrufe) == 1
+
+
+def test_post_retry_bei_429(monkeypatch):
+    client = sevdesk_client.SevdeskClient("t")
+    antworten = [FakeResp(429), FakeResp(200, {"objects": 1})]
+    monkeypatch.setattr(client._session, "request", lambda *a, **k: antworten.pop(0))
+    monkeypatch.setattr(sevdesk_client.time, "sleep", lambda s: None)
+    assert client.put("Voucher/1/bookAmount", json={}) == {"objects": 1}

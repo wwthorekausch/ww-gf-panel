@@ -51,7 +51,7 @@ def speichere_regeln(pfad: Path, regeln: list[Standardregel]) -> None:
 
 
 def verarbeite(faelle: list[Fall], schreiber, conn) -> dict:
-    z = {"erledigt": 0, "abgebrochen": 0, "limit": False}
+    z = {"erledigt": 0, "abgebrochen": 0, "limit": False, "gestoppt": False}
     for f in faelle:
         try:
             schreiber.ausfuehren(f)
@@ -59,6 +59,9 @@ def verarbeite(faelle: list[Fall], schreiber, conn) -> dict:
         except actions.Abbruch as e:
             z["abgebrochen"] += 1
             db.review_merken(conn, f.art, _beleg_id(f), f.umsatz.id if f.umsatz else "", str(e), "offen")
+            if isinstance(e, actions.AbbruchNachSchreiben):
+                z["gestoppt"] = True
+                break
         except actions.LimitErreicht:
             z["limit"] = True
             break
@@ -121,7 +124,8 @@ def cmd_run(args) -> int:
     db.run_ende(conn, run_id, {"sicher": z["erledigt"], "review": summe["review"][0], "ohne_beleg": summe["ohne_beleg"][0]})
     modus = "DRY-RUN — nichts geschrieben" if args.dry_run else "geschrieben"
     print(f"\n{modus}: {z['erledigt']} erledigt, {z['abgebrochen']} abgebrochen"
-          + (f", Limit {args.limit} erreicht" if z["limit"] else ""))
+          + (f", Limit {args.limit} erreicht" if z["limit"] else "")
+          + (" — GESTOPPT nach Fehler mit Schreibvorgang, Zustand in sevDesk prüfen (status/data.db)" if z["gestoppt"] else ""))
     for k, (n, s) in summe.items():
         print(f"  {k:<20} {n:>5}  {s:>12.2f} €")
     return 0
@@ -159,6 +163,9 @@ def cmd_review(args) -> int:
                 schreiber.ausfuehren(f, kategorie_id)
                 db.review_merken(conn, f.art, _beleg_id(f), f.umsatz.id, f.grund, "angenommen")
                 print("  ok")
+            except actions.AbbruchNachSchreiben as e:
+                print(f"  GESTOPPT nach Schreibvorgang: {e} — Zustand in sevDesk prüfen")
+                break
             except actions.Abbruch as e:
                 print(f"  abgebrochen: {e}")
             except actions.LimitErreicht:

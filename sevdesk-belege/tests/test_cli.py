@@ -52,11 +52,25 @@ def conn():
 
 def test_verarbeite_zaehlt_und_stoppt_bei_limit():
     z = cli.verarbeite([fall(1), fall(2), fall(3)], StubSchreiber(limit_nach=2), conn())
-    assert z == {"erledigt": 2, "abgebrochen": 0, "limit": True}
+    assert z == {"erledigt": 2, "abgebrochen": 0, "limit": True, "gestoppt": False}
 
 
 def test_verarbeite_abbruch_kommt_in_review():
     c = conn()
     z = cli.verarbeite([fall(1)], StubSchreiber(fehler="Nachlesen weicht ab"), c)
-    assert z == {"erledigt": 0, "abgebrochen": 1, "limit": False}
+    assert z == {"erledigt": 0, "abgebrochen": 1, "limit": False, "gestoppt": False}
     assert tuple(c.execute("SELECT status, grund FROM review").fetchone()) == ("offen", "Nachlesen weicht ab")
+
+
+class NachSchreibenStub(StubSchreiber):
+    def ausfuehren(self, fall, kategorie_id=None):
+        self.n += 1
+        raise actions.AbbruchNachSchreiben("Nachlesen weicht ab")
+
+
+def test_verarbeite_stoppt_nach_abbruch_mit_schreiben():
+    # C1
+    c = conn()
+    s = NachSchreibenStub()
+    z = cli.verarbeite([fall(1), fall(2)], s, c)
+    assert s.n == 1 and z["gestoppt"] is True and z["abgebrochen"] == 1

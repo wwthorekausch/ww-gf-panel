@@ -4,7 +4,8 @@ import time
 import requests
 
 BASE_URL = "https://my.sevdesk.de/api/v1"
-RETRY_STATUS = {429, 500, 502, 503, 504}
+RETRY_STATUS = {429, 500, 502, 503, 504}   # nur GET (idempotent)
+RETRY_STATUS_SCHREIBEN = {429}              # POST/PUT: 5xx evtl. schon verarbeitet -> nie wiederholen
 VERSUCHE = 3
 
 
@@ -14,9 +15,10 @@ class SevdeskClient:
         self._session.headers.update({"Authorization": api_token})
 
     def _request(self, method: str, path: str, **kwargs) -> dict:
+        retry = RETRY_STATUS if method == "GET" else RETRY_STATUS_SCHREIBEN
         for versuch in range(VERSUCHE):
             response = self._session.request(method, f"{BASE_URL}/{path}", timeout=60, **kwargs)
-            if response.status_code not in RETRY_STATUS or versuch == VERSUCHE - 1:
+            if response.status_code not in retry or versuch == VERSUCHE - 1:
                 break
             time.sleep(2 ** versuch)
         response.raise_for_status()

@@ -22,6 +22,10 @@ class Abbruch(Exception):
     """Dieser Fall wird abgebrochen und kommt zur Prüfung; Lauf geht weiter."""
 
 
+class AbbruchNachSchreiben(Abbruch):
+    """Abbruch, nachdem in diesem Fall schon geschrieben wurde — Lauf muss stoppen (Zustand prüfen)."""
+
+
 class LimitErreicht(Exception):
     """Maximale Anzahl Buchungen pro Lauf erreicht."""
 
@@ -41,7 +45,8 @@ def beleg_speichern_body(beleg: Beleg, kategorie_id: str, brutto: Decimal) -> di
     voucher = {k: beleg.roh[k] for k in ROH_FELDER if beleg.roh.get(k) not in (None, "")}
     voucher.update({"id": int(beleg.id), "objectName": "Voucher", "mapAll": True, "status": 100})
     if beleg.waehrung == "USD" and beleg.brutto_fremd and brutto != beleg.brutto_eur:
-        voucher["propertyExchangeRate"] = f"{(brutto / beleg.brutto_fremd).normalize():f}"
+        kurs = (brutto / beleg.brutto_fremd).quantize(Decimal("0.000001"))
+        voucher["propertyExchangeRate"] = f"{kurs.normalize():f}"
     einzel = len(beleg.positionen) == 1
     positionen = [{
         "id": int(p.id), "objectName": "VoucherPos", "mapAll": True,
@@ -75,7 +80,9 @@ class Schreiber:
     def __init__(self, client, conn, run_id: int, dry_run: bool, limit: int):
         self.client, self.conn, self.run_id = client, conn, run_id
         self.dry_run, self.limit = dry_run, limit
-        self.zaehler = 0
+        self.zaehler = 0                 # begonnene Fälle (auch abgebrochene) — Limit zählt Versuche
+        self.benutzte_umsaetze: set[str] = set()
+        self._geschrieben = False
 
     def _schreibe(self, methode: str, pfad: str, body: dict, objekt_typ: str, objekt_id: str, aktion: str):
         if not any(p.match(pfad) for p in ERLAUBT):
@@ -84,6 +91,7 @@ class Schreiber:
         if self.dry_run:
             db.log_ergebnis(self.conn, aid, "dry-run")
             return None
+        self._geschrieben = True         # auch bei Fehler: Request kann verarbeitet worden sein
         try:
             res = getattr(self.client, methode)(pfad, json=body)
         except Exception as e:
@@ -103,57 +111,77 @@ class Schreiber:
             raise LimitErreicht(f"Limit {self.limit} erreicht")
 
     def _nachlesen(self, beleg_id: str, kategorie_id: str, brutto: Decimal) -> None:
-        v = self.client.get(f"Voucher/{beleg_id}")["objects"][0]
-        pos = self.client.get("VoucherPos", params={"voucher[id]": beleg_id, "voucher[objectName]": "Voucher"})["objects"]
-        ok = (int(v["status"]) == 100 and Decimal(str(v["sumGross"])) == brutto
-              and pos and all(str(p["accountingType"]["id"]) == str(kategorie_id) for p in pos))
+        try:
+            v = self.client.get(f"Voucher/{beleg_id}")["objects"][0]
+            pos = self.client.get("VoucherPos", params={"voucher[id]": beleg_id,
+                                                        "voucher[objectName]": "Voucher"})["objects"]
+            ok = (int(v["status"]) == 100 and Decimal(str(v["sumGross"])) == brutto
+                  and pos and all(str(p["accountingType"]["id"]) == str(kategorie_id) for p in pos))
+        except Exception as e:
+            raise Abbruch(f"Nachlesen fehlgeschlagen (Beleg {beleg_id}): {e}") from e
         if not ok:
             raise Abbruch(f"Nachlesen weicht ab (Beleg {beleg_id})")
 
     def ausfuehren(self, fall: Fall, kategorie_id: str | None = None) -> str:
-        if fall.art == "beleg":
-            return self._beleg(fall)
-        if fall.art == "rechnung":
-            return self._rechnung(fall)
-        if fall.art == "standard":
-            return self._standard(fall, kategorie_id or fall.regel.kategorie_id)
-        raise Abbruch(f"Fallart {fall.art} nicht ausführbar")
+        self._pruefe_limit()
+        if fall.umsatz is not None and fall.umsatz.id in self.benutzte_umsaetze:
+            raise Abbruch(f"Umsatz {fall.umsatz.id} in diesem Lauf bereits verwendet")
+        self.zaehler += 1
+        self._geschrieben = False
+        try:
+            if fall.art == "beleg":
+                ergebnis = self._beleg(fall)
+            elif fall.art == "rechnung":
+                ergebnis = self._rechnung(fall)
+            elif fall.art == "standard":
+                ergebnis = self._standard(fall, kategorie_id or fall.regel.kategorie_id)
+            else:
+                raise Abbruch(f"Fallart {fall.art} nicht ausführbar")
+        except Abbruch as e:
+            if self._geschrieben and not isinstance(e, AbbruchNachSchreiben):
+                raise AbbruchNachSchreiben(str(e)) from e
+            raise
+        finally:
+            if self._geschrieben and fall.umsatz is not None:
+                self.benutzte_umsaetze.add(fall.umsatz.id)
+        if fall.umsatz is not None:
+            self.benutzte_umsaetze.add(fall.umsatz.id)
+        return ergebnis
 
     def _beleg(self, fall: Fall) -> str:
         b, u = fall.beleg, fall.umsatz
         self._pruefe_datum(b.datum, u.datum)
-        self._pruefe_limit()
         kat = fall.korrektur.get("kategorie_id", b.kategorie_id)
         brutto = fall.korrektur.get("brutto_eur", b.brutto_eur)
         if fall.korrektur and len(b.positionen) != 1:
             raise Abbruch("Korrektur nur bei genau einer Position")
+        if kat is None:
+            raise Abbruch("Kategorie fehlt oder nicht eindeutig")
         if fall.korrektur or b.status == 50:
             self._schreibe("post", "Voucher/Factory/saveVoucher", beleg_speichern_body(b, kat, brutto),
                            "Voucher", b.id, "korrigieren+öffnen")
             if not self.dry_run:
                 self._nachlesen(b.id, kat, brutto)
         self._schreibe("put", f"Voucher/{b.id}/bookAmount", zuordnen_body(u, brutto), "Voucher", b.id, "zuordnen")
-        self.zaehler += 1
         return "ok"
 
     def _rechnung(self, fall: Fall) -> str:
         r, u = fall.rechnung, fall.umsatz
         self._pruefe_datum(r.datum, u.datum)
-        self._pruefe_limit()
         self._schreibe("put", f"Invoice/{r.id}/bookAmount", zuordnen_body(u, u.betrag), "Invoice", r.id, "zuordnen")
-        self.zaehler += 1
         return "ok"
 
     def _standard(self, fall: Fall, kategorie_id: str) -> str:
         u = fall.umsatz
         self._pruefe_datum(u.datum)
-        self._pruefe_limit()
         betrag = -u.betrag
         res = self._schreibe("post", "Voucher/Factory/saveVoucher", neuer_beleg_body(u, fall.regel, kategorie_id),
                              "Voucher", "neu", "anlegen")
-        beleg_id = "0" if self.dry_run else str(res["objects"]["voucher"]["id"])
+        try:
+            beleg_id = "0" if self.dry_run else str(res["objects"]["voucher"]["id"])
+        except (KeyError, TypeError) as e:
+            raise Abbruch(f"Unerwartete Antwort beim Anlegen: {e}") from e
         if not self.dry_run:
             self._nachlesen(beleg_id, kategorie_id, betrag)
         self._schreibe("put", f"Voucher/{beleg_id}/bookAmount", zuordnen_body(u, betrag), "Voucher", beleg_id, "zuordnen")
-        self.zaehler += 1
         return "ok"

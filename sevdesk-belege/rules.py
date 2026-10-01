@@ -17,7 +17,7 @@ ART_NACH_KATEGORIE = {
     "Kontoführung / Kartengebühren": "gebuehren",
     "bezahlte Umsatzsteuer": "finanzamt",
 }
-GEBUEHREN_MUSTER = r"kontof(ü|ue)hrung|entgelt|geb(ü|ue)hr|kartengeb"
+GEBUEHREN_MUSTER = r"(^|\s)(entgelt\b|kontof(ü|ue)hrung|preis für sepa|kartengeb(ü|ue)hr)"
 
 
 def norm(text: str) -> str:
@@ -82,10 +82,23 @@ def kandidaten_beleg(beleg: Beleg, umsaetze: list[Umsatz], grenzen: Grenzen) -> 
     return out
 
 
+def _vorschlag(beleg: Beleg, u: Umsatz | None, w: LieferantWissen | None) -> dict:
+    """Korrekturvorschlag auch für Review-Fälle: gelernte Kategorie, USD auf Bankbetrag."""
+    k = {}
+    if w is not None and beleg.kategorie_id != w.kategorie_id:
+        k["kategorie_id"] = w.kategorie_id
+    if u is not None and beleg.waehrung == "USD" and -u.betrag != beleg.brutto_eur:
+        k["brutto_eur"] = -u.betrag
+    return k
+
+
 def bewerte_beleg(beleg: Beleg, kandidaten: list[Umsatz], rueck: Counter, wissen: dict,
                   dup_ids: set[str], grenzen: Grenzen, heute: date) -> Fall:
+    w = wissen.get(norm(beleg.lieferant))
+
     def fall(sicher, grund, u=None, korrektur=None):
-        return Fall("beleg", sicher, grund, beleg.datum or heute, umsatz=u, beleg=beleg, korrektur=korrektur or {})
+        k = korrektur if korrektur is not None else _vorschlag(beleg, u, w)
+        return Fall("beleg", sicher, grund, beleg.datum or heute, umsatz=u, beleg=beleg, korrektur=k)
 
     if beleg.datum is None or beleg.datum > heute:
         return fall(False, "Belegdatum fehlt oder in der Zukunft")
@@ -105,7 +118,6 @@ def bewerte_beleg(beleg: Beleg, kandidaten: list[Umsatz], rueck: Counter, wissen
     bank = -u.betrag
     if bank > grenzen.max_betrag:
         return fall(False, f"Betrag über {grenzen.max_betrag} €", u)
-    w = wissen.get(norm(beleg.lieferant))
     if w is None:
         return fall(False, "Lieferant ohne eindeutige Historie", u)
     if w.steuer != beleg.steuer:
@@ -141,7 +153,8 @@ def bewerte_rechnung(rechnung: Rechnung, kandidaten: list[Umsatz], rueck: Counte
         return fall(False, f"Rechnungstyp {rechnung.typ}", u)
     if rechnung.status != 200:
         return fall(False, "teilbezahlt", u)
-    if not rechnung.nummer or rechnung.nummer.lower() not in f"{u.zweck} {u.name}".lower():
+    if not rechnung.nummer or not re.search(rf"(?<![\w-]){re.escape(rechnung.nummer)}(?![\w-])",
+                                            f"{u.zweck} {u.name}", re.IGNORECASE):
         return fall(False, "Rechnungsnummer nicht im Verwendungszweck", u)
     return fall(True, "sicher", u)
 
@@ -184,16 +197,22 @@ def bewerte_standard(umsatz: Umsatz, regeln: list[Standardregel], wissen: dict, 
 
 
 def einstufen(belege, rechnungen, umsaetze, wissen, regeln, grenzen, heute) -> list[Fall]:
-    belege = ab_stichtag(belege, heute)
+    gueltig = ab_stichtag(belege, heute)
+    vor_stichtag = [b for b in belege if b.datum is not None and b.datum < STICHTAG]
+    unplausibel = [b for b in belege if b.datum is None or b.datum > heute]
     umsaetze = ab_stichtag(umsaetze, heute)
     faelle, vergeben = [], set()
 
-    dup = duplikate(belege)
-    kand = {b.id: kandidaten_beleg(b, umsaetze, grenzen) for b in belege}
+    dup = duplikate(gueltig)
+    # Belege vor Stichtag werden nie angefasst, beanspruchen aber ihre Zahlung (keine Doppelbuchung)
+    kand = {b.id: kandidaten_beleg(b, umsaetze, grenzen) for b in gueltig + vor_stichtag}
     rueck = Counter(u.id for ks in kand.values() for u in ks)
-    for b in belege:
+    for b in gueltig:
         faelle.append(bewerte_beleg(b, kand[b.id], rueck, wissen, dup, grenzen, heute))
-        vergeben.update(u.id for u in kand[b.id])
+    for ks in kand.values():
+        vergeben.update(u.id for u in ks)
+    for b in unplausibel:
+        faelle.append(bewerte_beleg(b, [], Counter(), wissen, dup, grenzen, heute))
 
     offen_r = [r for r in rechnungen if r.datum and r.datum >= STICHTAG]
     rest = [u for u in umsaetze if u.id not in vergeben]
@@ -223,7 +242,7 @@ def baue_standardregeln(historie: list[Beleg], kategorie_namen: dict[str, str], 
             continue
         kat = kats.pop()
         art = ART_NACH_KATEGORIE.get(kategorie_namen.get(kat, ""))
-        if art is None or (art == "finanzamt" and "finanzamt" not in key):
+        if art is None or art == "gebuehren" or (art == "finanzamt" and "finanzamt" not in key):
             continue
         lieferant = bs[0].lieferant.strip()
         regeln.append(Standardregel(f"{kategorie_namen[kat]}: {lieferant}", re.escape(lieferant), art, kat, lieferant))
