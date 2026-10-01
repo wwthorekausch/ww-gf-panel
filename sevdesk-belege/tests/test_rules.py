@@ -421,3 +421,63 @@ def test_abo_fehlende_zahlung_beansprucht_folgemonat_nicht_sicher():
     sep = umsatz(id="sep", datum=date(2026, 9, 9))
     faelle = rules.einstufen([b_aug, b_sep], [], [sep], W, [], G, HEUTE)
     assert not any(f.sicher for f in faelle)
+
+
+# --- Belegnummer, Aliase, echte Duplikate, Lieferanten ohne Historie ---
+def nr_beleg(id="b1", nr="INV-2010207", **kw):
+    b = beleg(id=id, **kw)
+    return Beleg(**{**b.__dict__, "roh": {"description": nr}})
+
+
+def test_duplikat_nur_bei_gleicher_belegnr():
+    a, b, c = nr_beleg("1", "A-000"), nr_beleg("2", "A-001"), nr_beleg("3", "A-000")
+    assert rules.duplikate([a, b, c]) == {"1", "3"}
+
+
+def test_belegnr_im_zweck_ersetzt_namensabgleich():
+    u = umsatz(name="PlentyONE GmbH", zweck="OID 1292970 INV-2010207 DBT 20620")
+    f = bewerte(nr_beleg(lieferant="plentymarkets"), [u], wissen=rules.lerne(historie(lieferant="plentymarkets"), G))
+    assert f.sicher
+
+
+def test_belegnr_kein_teiltreffer():
+    u = umsatz(name="PlentyONE GmbH", zweck="INV-20102079")
+    assert not rules.belegnr_im_text(nr_beleg(), u)
+
+
+def test_belegnr_loest_mehrere_kandidaten():
+    u1 = umsatz(id="u1", zweck="INV-2010207")
+    u2 = umsatz(id="u2", datum=date(2026, 9, 9), zweck="INV-9999999")
+    assert [u.id for u in rules.kandidaten_beleg(nr_beleg(), [u1, u2], G)] == ["u1"]
+
+
+def test_alias_name():
+    g = Grenzen(aliase=(("plentymarkets", "plentyone"),))
+    w = rules.lerne(historie(lieferant="plentymarkets"), G)
+    f = bewerte(beleg(lieferant="plentymarkets"), [umsatz(name="PlentyONE GmbH", zweck="x")], wissen=w, g=g)
+    assert f.sicher
+
+
+def test_loeschkandidaten_behaelt_aeltesten():
+    a = nr_beleg("100", "F38-0062")
+    b = nr_beleg("200", "F38-0062")
+    behalten, loeschen = rules.loeschkandidaten([b, a])
+    assert behalten.id == "100" and [x.id for x in loeschen] == ["200"]
+
+
+def test_loeschkandidaten_nur_entwuerfe_und_mit_nummer():
+    offen = Beleg(**{**nr_beleg("200", "F38-0062").__dict__, "status": 100})
+    assert rules.loeschkandidaten([nr_beleg("100", "F38-0062"), offen]) == (None, [])
+    assert rules.loeschkandidaten([nr_beleg("100", ""), nr_beleg("200", "")]) == (None, [])
+
+
+def test_echte_duplikat_gruppen():
+    gruppen = rules.echte_duplikate([nr_beleg("1", "X-1"), nr_beleg("2", "X-1"), nr_beleg("3", "X-2")], HEUTE)
+    assert [[b.id for b in g] for g in gruppen] == [["1", "2"]]
+
+
+def test_lieferanten_ohne_historie():
+    bs = [beleg(id="1", lieferant="REWE"), beleg(id="2", lieferant="REWE", datum=date(2026, 9, 1)),
+          beleg(id="3", lieferant="Hetzner Online GmbH")]
+    out = rules.lieferanten_ohne_historie(bs, W, HEUTE)
+    assert [(k, n, b.id) for k, n, b in out] == [("rewe", 2, "1")]

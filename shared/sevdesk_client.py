@@ -22,7 +22,7 @@ class SevdeskClient:
                 break
             time.sleep(2 ** versuch)
         response.raise_for_status()
-        return response.json()
+        return response.json() if getattr(response, "content", b"1") else {}
 
     def get(self, path: str, params: dict | None = None) -> dict:
         return self._request("GET", path, params=params)
@@ -32,6 +32,9 @@ class SevdeskClient:
 
     def put(self, path: str, json: dict | None = None) -> dict:
         return self._request("PUT", path, json=json)
+
+    def delete(self, path: str, json: dict | None = None) -> dict:
+        return self._request("DELETE", path)
 
     def get_open_invoices(self) -> list[dict]:
         """Rechnungen mit Status 'offen' oder 'teilbezahlt' (sevDesk-Statuscodes 200/1000)."""

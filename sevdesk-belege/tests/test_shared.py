@@ -78,3 +78,12 @@ def test_post_retry_bei_429(monkeypatch):
     monkeypatch.setattr(client._session, "request", lambda *a, **k: antworten.pop(0))
     monkeypatch.setattr(sevdesk_client.time, "sleep", lambda s: None)
     assert client.put("Voucher/1/bookAmount", json={}) == {"objects": 1}
+
+
+def test_delete_kein_retry_bei_5xx(monkeypatch):
+    client = sevdesk_client.SevdeskClient("t")
+    aufrufe = []
+    monkeypatch.setattr(client._session, "request", lambda m, *a, **k: aufrufe.append(m) or FakeResp(503))
+    with pytest.raises(RuntimeError):
+        client.delete("Voucher/1")
+    assert aufrufe == ["DELETE"]

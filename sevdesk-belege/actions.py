@@ -3,12 +3,14 @@ import re
 from decimal import Decimal
 
 import db
+from rules import norm
 from modell import STICHTAG, Beleg, Fall, Standardregel, Umsatz
 
-ERLAUBT = [re.compile(p) for p in (
-    r"^Voucher/Factory/saveVoucher$",
-    r"^Voucher/\d+/bookAmount$",
-    r"^Invoice/\d+/bookAmount$",
+ERLAUBT = [(m, re.compile(p)) for m, p in (
+    ("post", r"^Voucher/Factory/saveVoucher$"),
+    ("put", r"^Voucher/\d+/bookAmount$"),
+    ("put", r"^Invoice/\d+/bookAmount$"),
+    ("delete", r"^Voucher/\d+$"),          # nur über loesche_duplikat (Entwurf-Duplikate)
 )]
 ROH_FELDER = ("id", "objectName", "voucherDate", "supplier", "supplierName", "description", "document",
               "creditDebit", "taxType", "voucherType", "currency", "deliveryDate", "paymentDeadline")
@@ -85,7 +87,7 @@ class Schreiber:
         self._geschrieben = False
 
     def _schreibe(self, methode: str, pfad: str, body: dict, objekt_typ: str, objekt_id: str, aktion: str):
-        if not any(p.match(pfad) for p in ERLAUBT):
+        if not any(m == methode and p.match(pfad) for m, p in ERLAUBT):
             raise RegelVerletzung(f"Schreibpfad nicht erlaubt: {pfad}")
         aid = db.log_geplant(self.conn, self.run_id, objekt_typ, objekt_id, aktion, body, self.dry_run)
         if self.dry_run:
@@ -185,3 +187,13 @@ class Schreiber:
             self._nachlesen(beleg_id, kategorie_id, betrag)
         self._schreibe("put", f"Voucher/{beleg_id}/bookAmount", zuordnen_body(u, betrag), "Voucher", beleg_id, "zuordnen")
         return "ok"
+
+    def loesche_duplikat(self, dup: Beleg, behalten: Beleg) -> None:
+        """Löscht einen Entwurf, der ein echtes Duplikat von `behalten` ist. Einzige erlaubte Löschung."""
+        gleich = (dup.id != behalten.id and dup.status == 50 and dup.belegnr and dup.belegnr == behalten.belegnr
+                  and norm(dup.lieferant) == norm(behalten.lieferant) and dup.brutto_eur == behalten.brutto_eur
+                  and dup.datum == behalten.datum)
+        if not gleich:
+            raise RegelVerletzung(f"Beleg {dup.id} ist kein löschbares Duplikat von {behalten.id}")
+        self._pruefe_datum(dup.datum)
+        self._schreibe("delete", f"Voucher/{dup.id}", {}, "Voucher", dup.id, f"duplikat löschen (behalten {behalten.id})")

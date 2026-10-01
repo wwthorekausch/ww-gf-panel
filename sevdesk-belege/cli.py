@@ -17,10 +17,11 @@ import actions
 import db
 import laden
 import rules
-from modell import Fall, Grenzen, Standardregel
+from modell import Fall, Grenzen, LieferantWissen, Standardregel
 
 MODULE_DIR = Path(__file__).parent
 REGELN_PFAD = MODULE_DIR / "standardbuchungen.json"
+FEST_PFAD = MODULE_DIR / "lieferanten.json"      # von Hand festgelegte Kategorien (gitignored)
 KEYCHAIN_SERVICE = "ww-gf-cockpit-sevdesk"
 
 
@@ -38,7 +39,22 @@ def lade_grenzen(config: configparser.ConfigParser) -> Grenzen:
         gebuehren_max=Decimal(g.get("gebuehren_max", str(d.gebuehren_max))),
         tage_eindeutig=int(g.get("tage_eindeutig", d.tage_eindeutig)),
         standard_kategorie_ids=frozenset(i.strip() for i in ids.split(",") if i.strip()),
+        aliase=tuple((rules.norm(k), rules.norm(a)) for k, v in
+                     (config["aliase"].items() if config.has_section("aliase") else [])
+                     for a in v.split(",") if a.strip()),
     )
+
+
+def lade_fest(pfad: Path) -> dict[str, LieferantWissen]:
+    if not pfad.exists():
+        return {}
+    roh = json.loads(pfad.read_text(encoding="utf-8"))
+    return {k: LieferantWissen(v["kategorie_id"], v["steuer"], Decimal("0")) for k, v in roh.items()}
+
+
+def speichere_fest(pfad: Path, fest: dict[str, tuple[str, str]]) -> None:
+    daten = {k: {"kategorie_id": kat, "steuer": st} for k, (kat, st) in sorted(fest.items())}
+    pfad.write_text(json.dumps(daten, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def lade_regeln(pfad: Path) -> list[Standardregel]:
@@ -91,7 +107,7 @@ def _config() -> configparser.ConfigParser:
 
 def _einstufen(client, grenzen):
     daten = laden.lade(client)
-    wissen = rules.lerne(daten.historie, grenzen)
+    wissen = {**rules.lerne(daten.historie, grenzen), **lade_fest(FEST_PFAD)}   # Festgelegtes geht vor
     return daten, rules.einstufen(daten.belege, daten.rechnungen, daten.umsaetze, wissen,
                                   lade_regeln(REGELN_PFAD), grenzen, date.today())
 
@@ -181,6 +197,37 @@ def cmd_review(args) -> int:
     return 0
 
 
+def cmd_aufraeumen(args) -> int:
+    """Geht echte Duplikate (gleiche Belegnummer) und unplausible Belegdaten durch. Löscht nur nach 'j'."""
+    client = SevdeskClient(keychain_token(KEYCHAIN_SERVICE))
+    daten = laden.lade(client)
+    heute = date.today()
+    conn = db.connect(MODULE_DIR)
+    schreiber = actions.Schreiber(client, conn, db.run_start(conn, args.dry_run), args.dry_run, 0)
+    gruppen = [(b, l) for b, l in (rules.loeschkandidaten(g) for g in rules.echte_duplikate(daten.belege, heute)) if b]
+    print(f"{len(gruppen)} Duplikat-Gruppen. j = Duplikate löschen, Enter = überspringen, q = Ende\n")
+    for behalten, loeschen in gruppen:
+        print(f"{behalten.datum}  {behalten.lieferant[:30]}  {behalten.brutto_eur} {behalten.waehrung}  Nr {behalten.belegnr}")
+        print(f"   behalten: {behalten.id}   löschen: {', '.join(b.id for b in loeschen)}")
+        antwort = input("   löschen? [j/Enter/q] ").strip().lower()
+        if antwort == "q":
+            break
+        if antwort == "j":
+            try:
+                for b in loeschen:
+                    schreiber.loesche_duplikat(b, behalten)
+                print("   gelöscht" if not args.dry_run else "   (dry-run)")
+            except actions.Abbruch as e:
+                print(f"   STOPP: {e}")
+                return 1
+    unplausibel = [b for b in daten.belege if b.datum is None or b.datum > heute]
+    if unplausibel:
+        print(f"\n{len(unplausibel)} Belege mit fehlendem/zukünftigem Datum — in sevDesk korrigieren:")
+        for b in unplausibel:
+            print(f"   {b.id}  {b.datum}  {b.lieferant[:30]}  {b.brutto_eur} {b.waehrung}  Nr {b.belegnr}")
+    return 0
+
+
 def cmd_status(args) -> int:
     conn = db.connect(MODULE_DIR)
     for r in db.letzte_runs(conn):
@@ -211,10 +258,13 @@ def main() -> int:
         p.add_argument("--limit", type=int, default=20)
         p.add_argument("--umsatz", help="nur den Fall mit dieser Umsatz-ID bearbeiten")
     sub.add_parser("status")
+    p = sub.add_parser("aufraeumen")
+    p.add_argument("--dry-run", action="store_true")
     p = sub.add_parser("init-regeln")
     p.add_argument("--force", action="store_true")
     args = parser.parse_args()
-    handlers = {"run": cmd_run, "review": cmd_review, "status": cmd_status, "init-regeln": cmd_init_regeln}
+    handlers = {"run": cmd_run, "review": cmd_review, "status": cmd_status, "init-regeln": cmd_init_regeln,
+                "aufraeumen": cmd_aufraeumen}
     return handlers[args.command](args)
 
 

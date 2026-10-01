@@ -34,6 +34,9 @@ class FakeClient:
     def put(self, path, json=None):
         return self._write("PUT", path, json)
 
+    def delete(self, path, json=None):
+        return self._write("DELETE", path, json)
+
 
 def conn():
     c = sqlite3.connect(":memory:")
@@ -251,3 +254,34 @@ def test_kurs_auf_6_stellen_gerundet():
 def test_zuordnen_body_eingang_positiv():
     e = Umsatz("78", "1002", date(2026, 9, 7), D("1190.00"), "Kunde", "RE-10001")
     assert actions.zuordnen_body(e, D("1190.00"))["amount"] == 1190.0
+
+
+# --- Duplikate löschen (eng begrenzt) ---
+def nr(b, nummer="F38-0062", **kw):
+    return Beleg(**{**b.__dict__, "roh": {**b.roh, "description": nummer}, **kw})
+
+
+def test_duplikat_loeschen_erlaubt():
+    c = FakeClient()
+    s, _ = schreiber(c)
+    behalten, dup = nr(beleg(), id="4"), nr(beleg())
+    s.loesche_duplikat(dup, behalten)
+    assert schreibpfade(c) == [("DELETE", "Voucher/5")]
+
+
+def test_duplikat_loeschen_guards():
+    s, _ = schreiber(FakeClient())
+    behalten = nr(beleg(), id="4")
+    for dup in (nr(beleg(status=100)),                    # kein Entwurf
+                nr(beleg(), nummer="ANDERE"),             # andere Belegnummer
+                nr(beleg(), nummer=""),                   # keine Belegnummer
+                nr(beleg(), id="4"),                      # derselbe Beleg
+                nr(beleg(datum=date(2024, 12, 1)))):      # vor Stichtag
+        with pytest.raises(actions.RegelVerletzung):
+            s.loesche_duplikat(dup, behalten)
+
+
+def test_delete_nur_auf_voucher_pfad():
+    s, _ = schreiber(FakeClient())
+    with pytest.raises(actions.RegelVerletzung):
+        s._schreibe("delete", "Invoice/5", {}, "X", "5", "test")

@@ -27,10 +27,20 @@ def norm(text: str) -> str:
     return " ".join(t.split())
 
 
-def name_passt(lieferant: str, umsatz: Umsatz) -> bool:
+def name_passt(lieferant: str, umsatz: Umsatz, aliase: tuple = ()) -> bool:
     text = norm(f"{umsatz.name} {umsatz.zweck}")
-    tokens = [w for w in norm(lieferant).split() if len(w) >= 4]
+    key = norm(lieferant)
+    if any(a and a in text for k, a in aliase if k == key):
+        return True
+    tokens = [w for w in key.split() if len(w) >= 4]
     return bool(tokens) and any(w in text for w in tokens)
+
+
+def belegnr_im_text(beleg: Beleg, umsatz: Umsatz) -> bool:
+    nr = beleg.belegnr
+    if len(nr) < 5:
+        return False
+    return bool(re.search(rf"(?<![\w-]){re.escape(nr)}(?![\w-])", f"{umsatz.name} {umsatz.zweck}", re.IGNORECASE))
 
 
 def ab_stichtag(objekte: list, heute: date) -> list:
@@ -39,10 +49,41 @@ def ab_stichtag(objekte: list, heute: date) -> list:
 
 
 def duplikate(belege: list[Beleg]) -> set[str]:
+    """Gleicher Lieferant, Betrag, Datum UND gleiche Belegnummer. Andere Belegnummer = eigene Rechnung."""
     gruppen = defaultdict(list)
     for b in belege:
-        gruppen[(norm(b.lieferant), b.brutto_eur, b.datum)].append(b.id)
+        gruppen[(norm(b.lieferant), b.brutto_eur, b.datum, b.belegnr)].append(b.id)
     return {i for ids in gruppen.values() if len(ids) > 1 for i in ids}
+
+
+def echte_duplikate(belege: list[Beleg], heute: date) -> list[list[Beleg]]:
+    gruppen = defaultdict(list)
+    for b in ab_stichtag(belege, heute):
+        if b.belegnr:
+            gruppen[(norm(b.lieferant), b.brutto_eur, b.datum, b.belegnr)].append(b)
+    out = [sorted(g, key=lambda b: int(b.id)) for g in gruppen.values() if len(g) > 1]
+    return sorted(out, key=lambda g: g[0].datum, reverse=True)
+
+
+def loeschkandidaten(gruppe: list[Beleg]) -> tuple[Beleg | None, list[Beleg]]:
+    """Ältesten Beleg behalten, übrige Entwürfe (Status 50) löschen. Nur bei identischer, nicht leerer Belegnummer."""
+    nrs = {b.belegnr for b in gruppe}
+    if len(gruppe) < 2 or len(nrs) != 1 or not nrs.pop():
+        return None, []
+    behalten = min(gruppe, key=lambda b: int(b.id))
+    loeschen = [b for b in gruppe if b.id != behalten.id and b.status == 50]
+    return (behalten, loeschen) if loeschen else (None, [])
+
+
+def lieferanten_ohne_historie(belege: list[Beleg], wissen: dict, heute: date) -> list[tuple[str, int, Beleg]]:
+    """(norm(lieferant), Anzahl Belege, neuester Beleg) für Lieferanten ohne Wissen — neu nach alt."""
+    gruppen = defaultdict(list)
+    for b in ab_stichtag(belege, heute):
+        key = norm(b.lieferant)
+        if key and key not in wissen:
+            gruppen[key].append(b)
+    out = [(k, len(bs), bs[0]) for k, bs in gruppen.items()]
+    return sorted(out, key=lambda t: t[2].datum, reverse=True)
 
 
 def lerne(historie: list[Beleg], grenzen: Grenzen) -> dict[str, LieferantWissen]:
@@ -80,6 +121,9 @@ def kandidaten_beleg(beleg: Beleg, umsaetze: list[Umsatz], grenzen: Grenzen) -> 
         elif bank == beleg.brutto_eur:
             out.append(u)
     if len(out) > 1:
+        mit_nr = [u for u in out if belegnr_im_text(beleg, u)]
+        if len(mit_nr) == 1:
+            return mit_nr
         nah = [u for u in out if abs((u.datum - beleg.datum).days) <= grenzen.tage_eindeutig]
         if len(nah) == 1:
             return nah
@@ -117,7 +161,7 @@ def bewerte_beleg(beleg: Beleg, kandidaten: list[Umsatz], rueck: Counter, wissen
         return fall(False, "Zahlung passt zu mehreren Belegen", u)
     if beleg.waehrung not in ("EUR", "USD"):
         return fall(False, f"Währung {beleg.waehrung}", u)
-    if not name_passt(beleg.lieferant, u):
+    if not (belegnr_im_text(beleg, u) or name_passt(beleg.lieferant, u, grenzen.aliase)):
         return fall(False, "Lieferant nicht im Zahlungstext", u)
     bank = -u.betrag
     if bank > grenzen.max_betrag:

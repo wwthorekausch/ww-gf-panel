@@ -44,6 +44,11 @@ class Beleg:
         return ids.pop() if len(ids) == 1 else None
 
     @property
+    def belegnr(self) -> str:
+        """Belegnummer, die GetMyInvoices ins Beschreibungsfeld schreibt."""
+        return (self.roh.get("description") or "").strip()
+
+    @property
     def steuer(self) -> str:
         return f"{self.steuerart}:" + ",".join(sorted({f"{p.steuersatz.normalize():f}" for p in self.positionen}))
 
@@ -70,6 +75,7 @@ class Grenzen:
     gebuehren_max: Decimal = Decimal("100")
     tage_eindeutig: int = 5          # mehrere Kandidaten: genau einer in ±N Tagen gewinnt (Monatsabos)
     standard_kategorie_ids: frozenset[str] = frozenset()
+    aliase: tuple[tuple[str, str], ...] = ()   # (norm(lieferant), norm(alias)) aus config [aliase]
 
 
 @dataclass(frozen=True)

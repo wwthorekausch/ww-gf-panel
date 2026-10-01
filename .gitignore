@@ -20,6 +20,7 @@ bwa/auswertungen/
 
 # Generierte Regeln mit Personen-/Lieferantennamen aus sevDesk
 sevdesk-belege/standardbuchungen.json
+sevdesk-belege/lieferanten.json
 
 # Backlog mit konkreten Beträgen und Geschäftsdetails
 TODO.md

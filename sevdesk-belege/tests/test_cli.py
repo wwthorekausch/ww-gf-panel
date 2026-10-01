@@ -79,3 +79,16 @@ def test_verarbeite_stoppt_nach_abbruch_mit_schreiben():
 def test_nur_umsatz_filtert_auf_einen_fall():
     assert [f.umsatz.id for f in cli.nur_umsatz([fall(1), fall(2), fall(3)], "2")] == ["2"]
     assert [f.umsatz.id for f in cli.nur_umsatz([fall(1), fall(2)], None)] == ["1", "2"]
+
+
+def test_aliase_aus_config():
+    c = configparser.ConfigParser()
+    c.read_string("[aliase]\nplentymarkets = PlentyONE, Plenty One\n")
+    assert cli.lade_grenzen(c).aliase == (("plentymarkets", "plentyone"), ("plentymarkets", "plenty one"))
+
+
+def test_feste_lieferanten_roundtrip(tmp_path):
+    p = tmp_path / "lieferanten.json"
+    cli.speichere_fest(p, {"rewe": ("2", "default:7")})
+    w = cli.lade_fest(p)
+    assert w["rewe"].kategorie_id == "2" and w["rewe"].steuer == "default:7"

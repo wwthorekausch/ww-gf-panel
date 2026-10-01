@@ -10,6 +10,10 @@ gebuehren_max = 100
 ; mehrere passende Zahlungen (Monatsabos): genau eine in ±N Tagen um Belegdatum wird genommen
 tage_eindeutig = 5
 
+[aliase]
+; Lieferant (wie in GetMyInvoices) = Name(n) auf dem Kontoauszug, kommagetrennt
+plentymarkets = PlentyONE
+
 [kategorien]
 ; AccountingType-IDs, die GetMyInvoices als Platzhalter setzt — gelten als "leer" und werden korrigiert
 standard_ids =
