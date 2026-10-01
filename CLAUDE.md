@@ -32,6 +32,10 @@ python cockpit.py sevdesk-mahnwesen mahnungen
 
 Jedes Modul verwaltet eigene `config.ini` innerhalb seines Ordners (gitignored, enthält Tokens). Kein zentrales Secret-File — Trennung pro Modul.
 
+## Repo
+
+`git@github.com:wwthorekausch/ww-gf-panel.git` — nur Tooling. Daten, Ergebnisse, PDFs, `config.ini`, `*.db`, `TODO.md`, generierte `standardbuchungen.json` sind per `.gitignore` ausgeschlossen. Testdaten/Fixtures immer anonymisiert (keine echten Namen, Beträge, IDs). Vor jedem Push `git diff --cached --name-only` prüfen.
+
 ## Harte Regeln sevDesk
 
 - Rechnungen, Gutschriften und Stornorechnungen (Ausgangsbelege) nie direkt im Status ändern (kein manuelles bezahlt/storniert/Entwurf, kein Löschen, keine Inhaltsänderung). Erlaubt: Zahlung zuordnen (`bookAmount`) — dass sevDesk dadurch selbst auf bezahlt setzt, ist ok.
