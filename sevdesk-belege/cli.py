@@ -36,6 +36,7 @@ def lade_grenzen(config: configparser.ConfigParser) -> Grenzen:
         min_historie=int(g.get("min_historie", d.min_historie)),
         lohn_toleranz_prozent=Decimal(g.get("lohn_toleranz_prozent", str(d.lohn_toleranz_prozent))),
         gebuehren_max=Decimal(g.get("gebuehren_max", str(d.gebuehren_max))),
+        tage_eindeutig=int(g.get("tage_eindeutig", d.tage_eindeutig)),
         standard_kategorie_ids=frozenset(i.strip() for i in ids.split(",") if i.strip()),
     )
 

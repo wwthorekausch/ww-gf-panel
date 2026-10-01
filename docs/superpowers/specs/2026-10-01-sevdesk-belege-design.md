@@ -56,7 +56,7 @@ Alle Bedingungen müssen gelten, sonst Review.
 4. Steuerart/-satz wie Historie des Lieferanten.
 5. Betrag EUR: centgenau. USD: Abweichung Bank-EUR zu sevDesk-EUR ≤ 3 % → Beleg auf Bank-EUR anpassen. Andere Währungen: immer Review.
 6. Zahlungsdatum zwischen Belegdatum −5 und +45 Tagen.
-7. Eindeutig in beide Richtungen (1 Umsatz ↔ 1 Beleg).
+7. Eindeutig in beide Richtungen (1 Umsatz ↔ 1 Beleg). Mehrere Kandidaten (Monatsabos): genau einer innerhalb ±`tage_eindeutig` (5) Tagen um Belegdatum gewinnt (Entscheidung 2026-10-01).
 8. Lieferantenname (unscharf) in Empfänger oder Verwendungszweck.
 9. Betrag ≤ 2.000 €.
 

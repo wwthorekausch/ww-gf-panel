@@ -68,6 +68,7 @@ class Grenzen:
     min_historie: int = 2
     lohn_toleranz_prozent: Decimal = Decimal("10")
     gebuehren_max: Decimal = Decimal("100")
+    tage_eindeutig: int = 5          # mehrere Kandidaten: genau einer in ±N Tagen gewinnt (Monatsabos)
     standard_kategorie_ids: frozenset[str] = frozenset()
 
 

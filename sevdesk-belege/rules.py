@@ -79,6 +79,10 @@ def kandidaten_beleg(beleg: Beleg, umsaetze: list[Umsatz], grenzen: Grenzen) -> 
                 out.append(u)
         elif bank == beleg.brutto_eur:
             out.append(u)
+    if len(out) > 1:
+        nah = [u for u in out if abs((u.datum - beleg.datum).days) <= grenzen.tage_eindeutig]
+        if len(nah) == 1:
+            return nah
     return out
 
 

@@ -7,6 +7,8 @@ max_betrag = 2000
 min_historie = 2
 lohn_toleranz_prozent = 10
 gebuehren_max = 100
+; mehrere passende Zahlungen (Monatsabos): genau eine in ±N Tagen um Belegdatum wird genommen
+tage_eindeutig = 5
 
 [kategorien]
 ; AccountingType-IDs, die GetMyInvoices als Platzhalter setzt — gelten als "leer" und werden korrigiert

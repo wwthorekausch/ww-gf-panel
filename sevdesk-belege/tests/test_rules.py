@@ -398,3 +398,26 @@ def test_review_kategorie_vorschlag_gelernt():
     # I7
     f = bewerte(beleg(kat="1111"))
     assert not f.sicher and f.korrektur == {"kategorie_id": "2819"}
+
+
+# --- Abo-Regel: mehrere Kandidaten -> genau einer innerhalb ±tage_eindeutig ---
+def test_abo_naechste_zahlung_eindeutig():
+    aug = umsatz(id="aug", datum=date(2026, 8, 9))
+    sep = umsatz(id="sep", datum=date(2026, 9, 9))
+    f = bewerte(beleg(datum=date(2026, 8, 8)), [aug, sep])
+    assert f.sicher and f.umsatz.id == "aug"
+
+
+def test_abo_zwei_monate_richtig_gepaart():
+    b_aug, b_sep = beleg(id="ba", datum=date(2026, 8, 8)), beleg(id="bs", datum=date(2026, 9, 8))
+    aug, sep = umsatz(id="aug", datum=date(2026, 8, 9)), umsatz(id="sep", datum=date(2026, 9, 9))
+    faelle = rules.einstufen([b_aug, b_sep], [], [aug, sep], W, [], G, HEUTE)
+    assert {(f.beleg.id, f.umsatz.id, f.sicher) for f in faelle} == {("ba", "aug", True), ("bs", "sep", True)}
+
+
+def test_abo_fehlende_zahlung_beansprucht_folgemonat_nicht_sicher():
+    # Aug-Zahlung fehlt: Aug-Beleg hat nur Sep-Zahlung als Kandidat -> Konflikt mit Sep-Beleg -> beide Review
+    b_aug, b_sep = beleg(id="ba", datum=date(2026, 8, 8)), beleg(id="bs", datum=date(2026, 9, 8))
+    sep = umsatz(id="sep", datum=date(2026, 9, 9))
+    faelle = rules.einstufen([b_aug, b_sep], [], [sep], W, [], G, HEUTE)
+    assert not any(f.sicher for f in faelle)
