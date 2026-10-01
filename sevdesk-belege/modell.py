@@ -76,7 +76,8 @@ class Grenzen:
     tage_eindeutig: int = 5          # mehrere Kandidaten: genau einer in ±N Tagen gewinnt (Monatsabos)
     standard_kategorie_ids: frozenset[str] = frozenset()
     aliase: tuple[tuple[str, str], ...] = ()
-    ausgeschlossen: frozenset[str] = frozenset()  # norm(lieferant) — nie buchen (z.B. eigene Umbuchungen)   # (norm(lieferant), norm(alias)) aus config [aliase]
+    ausgeschlossen: frozenset[str] = frozenset()
+    steuerarten: tuple[tuple[str, str], ...] = ()   # (Regex auf Zahlungstext, Kategorie-ID | "pruefen")  # norm(lieferant) — nie buchen (z.B. eigene Umbuchungen)   # (norm(lieferant), norm(alias)) aus config [aliase]
 
 
 @dataclass(frozen=True)

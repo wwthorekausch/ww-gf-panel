@@ -341,3 +341,12 @@ def test_usd_auf_eur_guards():
     for b, u in ((eur, UMS_USD), (zwei, UMS_USD), (bezahlt, UMS_USD), (usd_beleg(), eingang)):
         with pytest.raises(actions.RegelVerletzung):
             s.usd_auf_eur(b, u)
+
+
+def test_standard_nutzt_kategorie_aus_korrektur():
+    c = FakeClient(nachlesen_brutto="80", nachlesen_kat="3")
+    s, _ = schreiber(c)
+    u = Umsatz("80", "1001", date(2026, 6, 2), D("-80"), "Finanzamt Kiel", "UMS.ST MRZ.26")
+    r = Standardregel("Finanzamt Kiel", "finanzamt", "finanzamt", "999", "Finanzamt Kiel")
+    s.ausfuehren(Fall("standard", True, "Standardbuchung", u.datum, umsatz=u, regel=r, korrektur={"kategorie_id": "3"}))
+    assert schreibpfade(c) == [("POST", "Voucher/Factory/saveVoucher"), ("PUT", "Voucher/999/bookAmount")]

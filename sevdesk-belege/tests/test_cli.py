@@ -111,3 +111,9 @@ def test_nur_art():
     b = Fall("beleg", True, "sicher", date(2026, 9, 1))
     assert cli.nur_art([fall(1), b], "standard") == [fall(1)]
     assert len(cli.nur_art([fall(1), b], None)) == 2
+
+
+def test_steuerarten_aus_config():
+    c = configparser.ConfigParser()
+    c.read_string("[steuerarten]\nums\\.?\\s?st = 3\nlohnst = 25230\n")
+    assert cli.lade_grenzen(c).steuerarten == ((r"ums\.?\s?st", "3"), ("lohnst", "25230"))

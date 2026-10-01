@@ -510,3 +510,29 @@ def test_gebuehren_kartenpreis_und_waehrungsumrechnung():
     treffer = lambda zweck: bool(rules.passende_regeln(umsatz(name="", zweck=zweck), [regel]))
     assert treffer("Monatlicher Kartenpreis 09/2026")
     assert treffer("1,95 für Währungsumrechnung")
+
+
+# --- Steuerart aus Verwendungszweck ---
+STEUERARTEN = ((r"ums\.?\s?st|umsatzsteuer", "3"), (r"lohnst", "25230"), (r"koerpst|körperschaftst", "35738"),
+               (r"gewerbesteuer", "86"), (r"kfz-steuer", "7"), (r"skapst|solskap|kistkap", "pruefen"))
+G_ST = Grenzen(steuerarten=STEUERARTEN)
+
+
+def test_steuerart_erkennung():
+    assert rules.steuerart("STEUERNR 020 UMS.ST MRZ.26 80,00EUR", STEUERARTEN) == "3"
+    assert rules.steuerart("STEUERNR LOHNST MAI 26", STEUERARTEN) == "25230"
+    assert rules.steuerart("GEWERBESTEUER 2026 G EWERBESTEUER 2026", STEUERARTEN) == "86"
+    assert rules.steuerart("2092961866222", STEUERARTEN) is None
+    assert rules.steuerart("SKAPST 250426 SOLSKAP", STEUERARTEN) is None          # pruefen -> keine Auto-Kategorie
+    assert rules.steuerart("UMS.ST MRZ LOHNST MAI", STEUERARTEN) is None          # zwei Arten -> unklar
+
+
+def test_finanzamt_mit_eindeutiger_steuerart_sicher():
+    u = umsatz(betrag="-80", name="Finanzamt Kiel", zweck="STEUERNR 020/296 UMS.ST MRZ.26 80,00EUR")
+    f = rules.bewerte_standard(u, REGELN, {}, G_ST)
+    assert f.sicher and f.korrektur == {"kategorie_id": "3"}
+
+
+def test_finanzamt_ohne_steuerart_review():
+    f = rules.bewerte_standard(umsatz(betrag="-266", name="Finanzamt Kiel", zweck="2092961866222"), REGELN, {}, G_ST)
+    assert not f.sicher and "Steuerart" in f.grund

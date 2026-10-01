@@ -18,3 +18,13 @@ plentymarkets = PlentyONE
 [kategorien]
 ; AccountingType-IDs, die GetMyInvoices als Platzhalter setzt — gelten als "leer" und werden korrigiert
 standard_ids =
+
+[steuerarten]
+; Regex auf Zahlungstext = AccountingType-ID; "pruefen" = nie automatisch. Genau eine Art muss passen.
+ums\.?\s?st|umsatzsteuer = 3
+lohnst = 25230
+koerpst|körperschaftst = 35738
+gewerbesteuer = 86
+kfz-steuer = 7
+s(ä|ae)umnis|versp(ä|ae)tungszuschlag = 26362
+skapst|solskap|kistkap|kapitalertrag = pruefen

@@ -41,6 +41,8 @@ def lade_grenzen(config: configparser.ConfigParser) -> Grenzen:
         tage_eindeutig=int(g.get("tage_eindeutig", d.tage_eindeutig)),
         standard_kategorie_ids=frozenset(i.strip() for i in ids.split(",") if i.strip()),
         ausgeschlossen=lade_ausgeschlossen(FEST_PFAD),
+        steuerarten=tuple((k, v.strip()) for k, v in
+                          (config["steuerarten"].items() if config.has_section("steuerarten") else [])),
         aliase=tuple((rules.norm(k), rules.norm(a)) for k, v in
                      (config["aliase"].items() if config.has_section("aliase") else [])
                      for a in v.split(",") if a.strip()),

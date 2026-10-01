@@ -149,7 +149,8 @@ class Schreiber:
             elif fall.art == "rechnung":
                 ergebnis = self._rechnung(fall)
             elif fall.art == "standard":
-                ergebnis = self._standard(fall, kategorie_id or fall.regel.kategorie_id)
+                ergebnis = self._standard(fall, kategorie_id or fall.korrektur.get("kategorie_id")
+                                          or fall.regel.kategorie_id)
             else:
                 raise Abbruch(f"Fallart {fall.art} nicht ausführbar")
         except Abbruch as e:

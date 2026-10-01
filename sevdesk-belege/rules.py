@@ -211,6 +211,15 @@ def bewerte_rechnung(rechnung: Rechnung, kandidaten: list[Umsatz], rueck: Counte
     return fall(True, "sicher", u)
 
 
+def steuerart(text: str, steuerarten: tuple) -> str | None:
+    """Kategorie aus Verwendungszweck. Genau eine Steuerart muss passen; 'pruefen' oder mehrdeutig -> None."""
+    treffer = {kat for muster, kat in steuerarten if re.search(muster, text, re.IGNORECASE)}
+    if len(treffer) != 1:
+        return None
+    kat = treffer.pop()
+    return None if kat == "pruefen" else kat
+
+
 def passende_regeln(umsatz: Umsatz, regeln: list[Standardregel]) -> list[Standardregel]:
     text = f"{umsatz.name} {umsatz.zweck}"
     return [r for r in regeln if re.search(r.muster, text, re.IGNORECASE)]
@@ -232,7 +241,11 @@ def bewerte_standard(umsatz: Umsatz, regeln: list[Standardregel], wissen: dict, 
         return fall(False, "mehrere Standardregeln passen")
     betrag = -umsatz.betrag
     if regel.art == "finanzamt":
-        return fall(False, "Finanzamt: Steuerart bestätigen")
+        kat = steuerart(f"{umsatz.name} {umsatz.zweck}", grenzen.steuerarten)
+        if kat is None:
+            return fall(False, "Finanzamt: Steuerart unklar, bitte bestätigen")
+        return Fall("standard", True, "Standardbuchung (Steuerart aus Verwendungszweck)", umsatz.datum,
+                    umsatz=umsatz, regel=regel, korrektur={"kategorie_id": kat})
     if regel.art == "gebuehren":
         if betrag > grenzen.gebuehren_max:
             return fall(False, f"Gebühr über {grenzen.gebuehren_max} €")
