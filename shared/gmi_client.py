@@ -20,7 +20,11 @@ class GmiClient:
             r = self._session.request(method, f"{BASE_URL}/{path}", timeout=60, **kw)
             if r.status_code not in retry or versuch == VERSUCHE - 1:
                 break
-            time.sleep(10 * (versuch + 1) if r.status_code == 429 else 2 ** versuch)
+            if r.status_code == 429:
+                warte = getattr(r, "headers", {}).get("Retry-After")
+                time.sleep(int(warte) + 1 if str(warte or "").isdigit() else 10 * (versuch + 1))
+            else:
+                time.sleep(2 ** versuch)
         r.raise_for_status()
         return r
 

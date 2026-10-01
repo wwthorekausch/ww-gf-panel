@@ -133,3 +133,16 @@ def test_gmi_429_wartet_laenger(monkeypatch):
     monkeypatch.setattr(gmi_client.time, "sleep", pausen.append)
     c.get("documents")
     assert pausen and pausen[0] >= 10
+
+
+def test_gmi_beachtet_retry_after(monkeypatch):
+    from shared import gmi_client
+    c = gmi_client.GmiClient("k", "G-1")
+    r429 = FakeResp(429)
+    r429.headers = {"Retry-After": "56"}
+    antworten = [r429, FakeResp(200, {"ok": 1})]
+    monkeypatch.setattr(c._session, "request", lambda *a, **k: antworten.pop(0))
+    pausen = []
+    monkeypatch.setattr(gmi_client.time, "sleep", pausen.append)
+    c.get("documents")
+    assert pausen == [57]
