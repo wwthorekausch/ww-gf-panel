@@ -1,0 +1,32 @@
+# Nur Tooling ins Repo — keine Daten, Ergebnisse oder Secrets.
+
+# Secrets / lokale Konfiguration
+config.ini
+*.env
+.env*
+
+# Lokale Datenbanken (Protokolle, Review, Caches)
+*.db
+*.sqlite
+*.sqlite3
+
+# Finanzdaten und Auswertungen
+bwa/data/
+bwa/auswertungen/
+*.pdf
+*.csv
+*.xlsx
+*.xls
+
+# Generierte Regeln mit Personen-/Lieferantennamen aus sevDesk
+sevdesk-belege/standardbuchungen.json
+
+# Backlog mit konkreten Beträgen und Geschäftsdetails
+TODO.md
+
+# Python / Tools
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+.DS_Store

@@ -1,0 +1,10 @@
+[sevdesk]
+api_token = DEIN_TOKEN
+
+[mahnstufen]
+stufe_1_tage = 7
+stufe_2_tage = 14
+stufe_3_tage = 30
+
+[tags]
+hidden_tag = nicht-relevant
