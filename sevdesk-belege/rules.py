@@ -136,8 +136,8 @@ def _vorschlag(beleg: Beleg, u: Umsatz | None, w: LieferantWissen | None) -> dic
     k = {}
     if w is not None and beleg.kategorie_id != w.kategorie_id:
         k["kategorie_id"] = w.kategorie_id
-    if u is not None and beleg.waehrung == "USD" and -u.betrag != beleg.brutto_eur:
-        k["brutto_eur"] = -u.betrag
+    if u is not None and beleg.waehrung == "USD":
+        k["auf_eur"] = -u.betrag          # USD-Beleg wird auf EUR = Bankbetrag umgestellt
     return k
 
 
@@ -180,13 +180,10 @@ def bewerte_beleg(beleg: Beleg, kandidaten: list[Umsatz], rueck: Counter, wissen
         if ist is not None and ist not in grenzen.standard_kategorie_ids and not w.fest:
             return fall(False, f"Kategorie {ist} statt gelernt {w.kategorie_id}", u)
         korrektur["kategorie_id"] = w.kategorie_id
-    if beleg.waehrung == "USD" and bank != beleg.brutto_eur:
-        korrektur["brutto_eur"] = bank
+    if beleg.waehrung == "USD":
+        korrektur["auf_eur"] = bank
     if korrektur and len(beleg.positionen) != 1:
         return fall(False, "mehrere Positionen, Korrektur nicht eindeutig", u)
-    if beleg.waehrung != "EUR":
-        # Live-Befund: API liest Positionsbetrag als Fremdwährung, Kurs wird ignoriert -> nie automatisch
-        return fall(False, "USD: Betrag/Kurs in sevDesk von Hand anpassen", u, korrektur)
     return fall(True, "sicher", u, korrektur)
 
 

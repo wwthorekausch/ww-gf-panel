@@ -361,3 +361,21 @@ def test_standard_eingang_als_einnahme():
     assert body["voucher"]["creditDebit"] == "D" and body["voucherPosSave"][0]["sumGross"] == 5000.0
     s.ausfuehren(Fall("standard", True, "Umbuchung", u.datum, umsatz=u, regel=r))
     assert schreibpfade(c) == [("POST", "Voucher/Factory/saveVoucher"), ("PUT", "Voucher/999/bookAmount")]
+
+
+def test_auto_lauf_usd_mit_auf_eur():
+    c = FakeClient(nachlesen_brutto="55.82")
+    s, _ = schreiber(c)
+    f = Fall("beleg", True, "sicher", date(2026, 5, 21), umsatz=UMS_USD, beleg=usd_beleg(), korrektur={"auf_eur": D("55.82")})
+    s.ausfuehren(f)
+    assert schreibpfade(c) == [("POST", "Voucher/Factory/saveVoucher"), ("PUT", "Voucher/5/bookAmount")]
+
+
+def test_auto_lauf_usd_mit_kategoriekorrektur():
+    c = FakeClient(nachlesen_brutto="55.82", nachlesen_kat="2820")
+    s, _ = schreiber(c)
+    f = Fall("beleg", True, "sicher", date(2026, 5, 21), umsatz=UMS_USD, beleg=usd_beleg(),
+             korrektur={"auf_eur": D("55.82"), "kategorie_id": "2820"})
+    s.ausfuehren(f)
+    body = c.bodies[0] if hasattr(c, "bodies") else None
+    assert schreibpfade(c)[-1] == ("PUT", "Voucher/5/bookAmount")

@@ -60,14 +60,14 @@ def beleg_speichern_body(beleg: Beleg, kategorie_id: str, brutto: Decimal) -> di
     return {"voucher": voucher, "voucherPosSave": positionen, "voucherPosDelete": None}
 
 
-def usd_auf_eur_body(beleg: Beleg, bank: Decimal) -> dict:
+def usd_auf_eur_body(beleg: Beleg, bank: Decimal, kategorie_id: str | None = None) -> dict:
     """Fremdwährungsbeleg auf EUR mit tatsächlich abgebuchtem Betrag umstellen (PDF bleibt Originalrechnung)."""
     voucher = {k: beleg.roh[k] for k in ROH_FELDER if beleg.roh.get(k) not in (None, "")}
     voucher.update({"id": int(beleg.id), "objectName": "Voucher", "mapAll": True, "status": 100, "currency": "EUR"})
     p = beleg.positionen[0]
     return {"voucher": voucher, "voucherPosSave": [{
         "id": int(p.id), "objectName": "VoucherPos", "mapAll": True,
-        "accountingType": {"id": int(p.kategorie_id), "objectName": "AccountingType"},
+        "accountingType": {"id": int(kategorie_id or p.kategorie_id), "objectName": "AccountingType"},
         "taxRate": float(p.steuersatz), "sumGross": float(bank), "net": False,
     }], "voucherPosDelete": None}
 
@@ -167,7 +167,9 @@ class Schreiber:
     def _beleg(self, fall: Fall) -> str:
         b, u = fall.beleg, fall.umsatz
         if b.waehrung != "EUR":
-            raise RegelVerletzung(f"Beleg {b.id}: Fremdwährung {b.waehrung} — API-Semantik ungeklärt, kein Schreiben")
+            if b.waehrung == "USD" and "auf_eur" in fall.korrektur:
+                return self._usd_intern(b, u, fall.korrektur.get("kategorie_id", b.kategorie_id), fall.korrektur["auf_eur"])
+            raise RegelVerletzung(f"Beleg {b.id}: Fremdwährung {b.waehrung} ohne EUR-Umstellung — kein Schreiben")
         self._pruefe_datum(b.datum, u.datum)
         kat = fall.korrektur.get("kategorie_id", b.kategorie_id)
         brutto = fall.korrektur.get("brutto_eur", b.brutto_eur)
@@ -216,20 +218,23 @@ class Schreiber:
 
     def usd_auf_eur(self, beleg: Beleg, umsatz: Umsatz) -> None:
         """USD-Beleg auf EUR = Bankbetrag umstellen, nachlesen, zuordnen. Nur per CLI-Befehl nach Einzel-Freigabe."""
-        if not (beleg.waehrung == "USD" and beleg.status in (50, 100) and len(beleg.positionen) == 1
-                and beleg.kategorie_id and umsatz.betrag < 0):
-            raise RegelVerletzung(f"Beleg {beleg.id} / Umsatz {umsatz.id}: Umstellung USD->EUR nicht zulässig")
-        self._pruefe_datum(beleg.datum, umsatz.datum)
-        bank = -umsatz.betrag
         self._geschrieben = False
         try:
-            self._schreibe("post", "Voucher/Factory/saveVoucher", usd_auf_eur_body(beleg, bank),
-                           "Voucher", beleg.id, "usd->eur")
-            if not self.dry_run:
-                self._nachlesen(beleg.id, beleg.kategorie_id, bank, "EUR")
-            self._schreibe("put", f"Voucher/{beleg.id}/bookAmount", zuordnen_body(umsatz, bank),
-                           "Voucher", beleg.id, "zuordnen")
+            self._usd_intern(beleg, umsatz, beleg.kategorie_id, -umsatz.betrag)
         except Abbruch as e:
             if self._geschrieben and not isinstance(e, AbbruchNachSchreiben):
                 raise AbbruchNachSchreiben(str(e)) from e
             raise
+
+    def _usd_intern(self, beleg: Beleg, umsatz: Umsatz, kategorie_id: str | None, bank: Decimal) -> str:
+        if not (beleg.waehrung == "USD" and beleg.status in (50, 100) and len(beleg.positionen) == 1
+                and kategorie_id and umsatz.betrag < 0 and bank == -umsatz.betrag):
+            raise RegelVerletzung(f"Beleg {beleg.id} / Umsatz {umsatz.id}: Umstellung USD->EUR nicht zulässig")
+        self._pruefe_datum(beleg.datum, umsatz.datum)
+        self._schreibe("post", "Voucher/Factory/saveVoucher", usd_auf_eur_body(beleg, bank, kategorie_id),
+                       "Voucher", beleg.id, "usd->eur")
+        if not self.dry_run:
+            self._nachlesen(beleg.id, kategorie_id, bank, "EUR")
+        self._schreibe("put", f"Voucher/{beleg.id}/bookAmount", zuordnen_body(umsatz, bank),
+                       "Voucher", beleg.id, "zuordnen")
+        return "ok"
