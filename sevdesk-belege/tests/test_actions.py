@@ -1,0 +1,168 @@
+import sqlite3
+from datetime import date
+
+import pytest
+
+import actions
+import db
+from conftest import D
+from modell import Beleg, Fall, Position, Rechnung, Standardregel, Umsatz
+
+
+class FakeClient:
+    def __init__(self, nachlesen_status=100, nachlesen_brutto="49.99", nachlesen_kat="2819", fehler_bei=None):
+        self.calls = []
+        self.v = {"status": str(nachlesen_status), "sumGross": nachlesen_brutto}
+        self.kat = nachlesen_kat
+        self.fehler_bei = fehler_bei
+
+    def get(self, path, params=None):
+        self.calls.append(("GET", path))
+        if path.startswith("Voucher/"):
+            return {"objects": [self.v]}
+        return {"objects": [{"accountingType": {"id": self.kat}}]}
+
+    def _write(self, method, path, json):
+        self.calls.append((method, path))
+        if self.fehler_bei and self.fehler_bei in path:
+            raise RuntimeError("HTTP 400")
+        return {"objects": {"voucher": {"id": 999}}}
+
+    def post(self, path, json=None):
+        return self._write("POST", path, json)
+
+    def put(self, path, json=None):
+        return self._write("PUT", path, json)
+
+
+def conn():
+    c = sqlite3.connect(":memory:")
+    c.row_factory = sqlite3.Row
+    db.init(c)
+    return c
+
+
+def schreiber(client, dry_run=False, limit=20):
+    c = conn()
+    return actions.Schreiber(client, c, db.run_start(c, dry_run), dry_run, limit), c
+
+
+U = Umsatz("77", "1001", date(2026, 9, 10), D("-49.99"), "HETZNER", "R123")
+POS = (Position("11", "2819", D("19"), D("49.99")),)
+
+
+def beleg(status=50, datum=date(2026, 9, 8), positionen=POS):
+    return Beleg("5", datum, "Hetzner", D("49.99"), None, "EUR", status, "default", positionen,
+                 roh={"id": "5", "objectName": "Voucher", "voucherDate": "2026-09-08", "supplierName": "Hetzner",
+                      "creditDebit": "C", "taxType": "default", "voucherType": "VOU", "currency": "EUR"})
+
+
+def fall_beleg(**kw):
+    return Fall("beleg", True, "sicher", date(2026, 9, 8), umsatz=U, beleg=kw.pop("b", beleg()), **kw)
+
+
+def schreibpfade(client):
+    return [(m, p) for m, p in client.calls if m != "GET"]
+
+
+def test_dry_run_schreibt_nie():
+    c = FakeClient()
+    s, conn_ = schreiber(c, dry_run=True)
+    s.ausfuehren(fall_beleg())
+    assert schreibpfade(c) == []
+    assert [r["ergebnis"] for r in conn_.execute("SELECT ergebnis FROM actions")] == ["dry-run", "dry-run"]
+
+
+def test_entwurf_reihenfolge_speichern_nachlesen_zuordnen():
+    c = FakeClient()
+    s, _ = schreiber(c)
+    assert s.ausfuehren(fall_beleg()) == "ok"
+    assert c.calls == [("POST", "Voucher/Factory/saveVoucher"), ("GET", "Voucher/5"), ("GET", "VoucherPos"),
+                       ("PUT", "Voucher/5/bookAmount")]
+    assert s.zaehler == 1
+
+
+def test_offener_beleg_ohne_korrektur_nur_zuordnen():
+    c = FakeClient()
+    s, _ = schreiber(c)
+    s.ausfuehren(fall_beleg(b=beleg(status=100)))
+    assert schreibpfade(c) == [("PUT", "Voucher/5/bookAmount")]
+
+
+def test_nachlesen_abweichend_kein_zuordnen():
+    c = FakeClient(nachlesen_brutto="48.00")
+    s, _ = schreiber(c)
+    with pytest.raises(actions.Abbruch, match="Nachlesen"):
+        s.ausfuehren(fall_beleg(korrektur={"brutto_eur": D("49.99")}))
+    assert ("PUT", "Voucher/5/bookAmount") not in c.calls
+
+
+def test_fehler_beim_speichern_kein_zuordnen():
+    c = FakeClient(fehler_bei="saveVoucher")
+    s, conn_ = schreiber(c)
+    with pytest.raises(actions.Abbruch):
+        s.ausfuehren(fall_beleg())
+    assert ("PUT", "Voucher/5/bookAmount") not in c.calls
+    assert conn_.execute("SELECT ergebnis FROM actions").fetchone()["ergebnis"] == "fehler"
+
+
+def test_guard_datum_vor_stichtag():
+    s, _ = schreiber(FakeClient())
+    with pytest.raises(actions.RegelVerletzung):
+        s.ausfuehren(fall_beleg(b=beleg(datum=date(2024, 12, 31))))
+
+
+def test_guard_pfad_whitelist():
+    s, _ = schreiber(FakeClient())
+    for pfad in ("Invoice/1/changeStatus", "Invoice/1", "Voucher/5", "CheckAccountTransaction/77"):
+        with pytest.raises(actions.RegelVerletzung):
+            s._schreibe("put", pfad, {}, "X", "1", "test")
+
+
+def test_korrektur_bei_mehreren_positionen_abbruch():
+    pos = (Position("11", "2819", D("19"), D("20")), Position("12", "2819", D("19"), D("29.99")))
+    s, _ = schreiber(FakeClient())
+    with pytest.raises(actions.Abbruch, match="Position"):
+        s.ausfuehren(fall_beleg(b=beleg(positionen=pos), korrektur={"kategorie_id": "2819"}))
+
+
+def test_limit_stoppt_vor_schreiben():
+    c = FakeClient()
+    s, _ = schreiber(c, limit=1)
+    s.ausfuehren(fall_beleg())
+    n = len(c.calls)
+    with pytest.raises(actions.LimitErreicht):
+        s.ausfuehren(fall_beleg())
+    assert len(c.calls) == n
+
+
+def test_rechnung_nur_bookamount():
+    c = FakeClient()
+    s, _ = schreiber(c)
+    r = Rechnung("31", "RE-10001", date(2026, 9, 1), "RE", 200, D("1190.00"), "Beispiel Kunde")
+    e = Umsatz("78", "1002", date(2026, 9, 7), D("1190.00"), "Beispiel Kunde GmbH", "RE-10001")
+    s.ausfuehren(Fall("rechnung", True, "sicher", e.datum, umsatz=e, rechnung=r))
+    assert c.calls == [("PUT", "Invoice/31/bookAmount")]
+
+
+def test_standard_anlegen_nachlesen_zuordnen():
+    c = FakeClient(nachlesen_brutto="2000", nachlesen_kat="50")
+    s, _ = schreiber(c)
+    u = Umsatz("79", "1001", date(2026, 9, 30), D("-2000"), "Max Mustermann", "Gehalt")
+    r = Standardregel("Lohn", "Mustermann", "lohn", "50", "Max Mustermann")
+    s.ausfuehren(Fall("standard", True, "Standardbuchung", u.datum, umsatz=u, regel=r))
+    assert schreibpfade(c) == [("POST", "Voucher/Factory/saveVoucher"), ("PUT", "Voucher/999/bookAmount")]
+
+
+def test_zuordnen_body_betrag_positiv():
+    b = actions.zuordnen_body(U, D("49.99"))
+    assert b["amount"] == 49.99 and b["checkAccountTransaction"] == {"id": 77, "objectName": "CheckAccountTransaction"}
+    assert b["checkAccount"] == {"id": 1001, "objectName": "CheckAccount"} and b["date"] == "2026-09-10"
+
+
+def test_speichern_body_usd_setzt_kurs():
+    b = Beleg("5", date(2026, 9, 21), "Bitwarden", D("69.73"), D("80"), "USD", 50, "default",
+              (Position("11", "2819", D("0"), D("69.73")),), roh={"id": "5", "currency": "USD"})
+    body = actions.beleg_speichern_body(b, "2819", D("71.82"))
+    assert body["voucher"]["status"] == 100 and body["voucher"]["propertyExchangeRate"] == "0.89775"
+    assert body["voucherPosSave"][0]["sumGross"] == 71.82
