@@ -46,3 +46,9 @@ def test_parse_rechnung_offener_betrag():
                               "invoiceType": "RE", "status": "750", "sumGross": "100", "paidAmount": "40",
                               "contact": {"name": "Kunde A"}})
     assert r.offen == D("60") and r.status == 750 and r.kunde == "Kunde A"
+
+
+def test_parse_umsatz_gegen_iban():
+    u = laden.parse_umsatz({"id": 1, "checkAccount": {"id": "1"}, "valueDate": "2026-09-01", "amount": "5",
+                            "payeePayerAcctNo": "de11 2022 0800", "payeePayerName": "X", "paymtPurpose": ""})
+    assert u.gegen_iban == "DE1120220800"

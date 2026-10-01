@@ -29,7 +29,8 @@ def alle(client, path: str, params: dict) -> list[dict]:
 
 def parse_umsatz(d: dict) -> Umsatz:
     return Umsatz(id=str(d["id"]), konto_id=str(d["checkAccount"]["id"]), datum=_datum(d["valueDate"]),
-                  betrag=_dec(d["amount"]), name=d.get("payeePayerName") or "", zweck=d.get("paymtPurpose") or "")
+                  betrag=_dec(d["amount"]), name=d.get("payeePayerName") or "", zweck=d.get("paymtPurpose") or "",
+                  gegen_iban=(d.get("payeePayerAcctNo") or "").replace(" ", "").upper())
 
 
 def parse_position(d: dict) -> Position:

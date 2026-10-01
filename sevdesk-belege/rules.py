@@ -228,6 +228,11 @@ def passende_regeln(umsatz: Umsatz, regeln: list[Standardregel]) -> list[Standar
 
 
 def bewerte_standard(umsatz: Umsatz, regeln: list[Standardregel], wissen: dict, grenzen: Grenzen) -> Fall:
+    if umsatz.gegen_iban and umsatz.gegen_iban in grenzen.eigene_ibans and grenzen.transit_kategorie:
+        regel = Standardregel("Umbuchung eigenes Konto", "", "transit", grenzen.transit_kategorie, "Geldtransit")
+        if "commerce" in norm(umsatz.name):   # Web Wikinger Commerce = andere Firma, nie Umbuchung
+            return Fall("standard", False, "Gegenkonto eigen, Name Commerce — prüfen", umsatz.datum, umsatz=umsatz, regel=regel)
+        return Fall("standard", True, "Umbuchung eigenes Konto", umsatz.datum, umsatz=umsatz, regel=regel)
     if umsatz.betrag >= 0:
         grund = "Zahlungseingang ohne passende Rechnung" if umsatz.betrag > 0 else "Betrag 0"
         return Fall("ohne_beleg", False, grund, umsatz.datum, umsatz=umsatz)

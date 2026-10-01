@@ -73,13 +73,13 @@ def usd_auf_eur_body(beleg: Beleg, bank: Decimal) -> dict:
 
 
 def neuer_beleg_body(umsatz: Umsatz, regel: Standardregel, kategorie_id: str) -> dict:
-    betrag = -umsatz.betrag
+    betrag = abs(umsatz.betrag)
     return {
         "voucher": {
             "objectName": "Voucher", "mapAll": True, "status": 100,
             "voucherDate": umsatz.datum.isoformat(), "supplierName": regel.lieferant,
             "description": f"{regel.name} {umsatz.datum:%m/%Y}",
-            "taxType": "default", "creditDebit": "C", "voucherType": "VOU",
+            "taxType": "default", "creditDebit": "D" if umsatz.betrag > 0 else "C", "voucherType": "VOU",
         },
         "voucherPosSave": [{
             "objectName": "VoucherPos", "mapAll": True,
@@ -192,7 +192,7 @@ class Schreiber:
     def _standard(self, fall: Fall, kategorie_id: str) -> str:
         u = fall.umsatz
         self._pruefe_datum(u.datum)
-        betrag = -u.betrag
+        betrag = abs(u.betrag)
         res = self._schreibe("post", "Voucher/Factory/saveVoucher", neuer_beleg_body(u, fall.regel, kategorie_id),
                              "Voucher", "neu", "anlegen")
         try:

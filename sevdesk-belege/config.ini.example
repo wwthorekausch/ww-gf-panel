@@ -18,6 +18,8 @@ plentymarkets = PlentyONE
 [kategorien]
 ; AccountingType-IDs, die GetMyInvoices als Platzhalter setzt — gelten als "leer" und werden korrigiert
 standard_ids =
+; Geldtransit-Kategorie für Umbuchungen
+geldtransit = 40
 
 [steuerarten]
 ; Regex auf Zahlungstext = AccountingType-ID; "pruefen" = nie automatisch. Genau eine Art muss passen.
@@ -28,3 +30,7 @@ gewerbesteuer = 86
 kfz-steuer = 7
 s(ä|ae)umnis|versp(ä|ae)tungszuschlag = 26362
 skapst|solskap|kistkap|kapitalertrag = pruefen
+
+[eigene_konten]
+; eigene IBANs, kommagetrennt — Zahlung mit dieser Gegen-IBAN = Umbuchung (Geldtransit)
+ibans = DE00 0000 0000 0000 0000 00

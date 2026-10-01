@@ -14,6 +14,7 @@ class Umsatz:
     betrag: Decimal
     name: str
     zweck: str
+    gegen_iban: str = ""
 
 
 @dataclass(frozen=True)
@@ -77,7 +78,9 @@ class Grenzen:
     standard_kategorie_ids: frozenset[str] = frozenset()
     aliase: tuple[tuple[str, str], ...] = ()
     ausgeschlossen: frozenset[str] = frozenset()
-    steuerarten: tuple[tuple[str, str], ...] = ()   # (Regex auf Zahlungstext, Kategorie-ID | "pruefen")  # norm(lieferant) — nie buchen (z.B. eigene Umbuchungen)   # (norm(lieferant), norm(alias)) aus config [aliase]
+    steuerarten: tuple[tuple[str, str], ...] = ()
+    eigene_ibans: frozenset[str] = frozenset()      # Umbuchung = Gegen-IBAN ist eigenes Konto
+    transit_kategorie: str | None = None            # AccountingType "Geldtransit"   # (Regex auf Zahlungstext, Kategorie-ID | "pruefen")  # norm(lieferant) — nie buchen (z.B. eigene Umbuchungen)   # (norm(lieferant), norm(alias)) aus config [aliase]
 
 
 @dataclass(frozen=True)

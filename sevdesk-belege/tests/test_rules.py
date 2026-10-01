@@ -541,3 +541,24 @@ def test_finanzamt_ohne_steuerart_review():
 def test_beleg_ohne_dokument_nicht_sicher():
     f = bewerte(beleg(dok=False))
     assert not f.sicher and f.grund == "Beleg ohne Dokument (PDF fehlt)"
+
+
+# --- Umbuchungen zwischen eigenen Konten ---
+G_TR = Grenzen(eigene_ibans=frozenset({"DE11202208000027776310"}), transit_kategorie="40")
+
+
+def test_umbuchung_eigenes_konto_ausgang_und_eingang():
+    for betrag in ("-5000", "5000"):
+        u = Umsatz("t1", "1", date(2026, 9, 1), D(betrag), "Web Wikinger GmbH", "Umbuchung", gegen_iban="DE11202208000027776310")
+        f = rules.bewerte_standard(u, [], {}, G_TR)
+        assert f.sicher and f.art == "standard" and f.regel.art == "transit" and f.regel.kategorie_id == "40"
+
+
+def test_umbuchung_fremde_iban_nicht():
+    u = Umsatz("t1", "1", date(2026, 9, 1), D("-5000"), "Web Wikinger GmbH", "x", gegen_iban="DE00999")
+    assert rules.bewerte_standard(u, [], {}, G_TR).art == "ohne_beleg"
+
+
+def test_umbuchung_commerce_nie():
+    u = Umsatz("t1", "1", date(2026, 9, 1), D("-5000"), "Web Wikinger Commerce GmbH", "x", gegen_iban="DE11202208000027776310")
+    assert not rules.bewerte_standard(u, [], {}, G_TR).sicher

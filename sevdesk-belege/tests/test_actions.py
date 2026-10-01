@@ -350,3 +350,14 @@ def test_standard_nutzt_kategorie_aus_korrektur():
     r = Standardregel("Finanzamt Kiel", "finanzamt", "finanzamt", "999", "Finanzamt Kiel")
     s.ausfuehren(Fall("standard", True, "Standardbuchung", u.datum, umsatz=u, regel=r, korrektur={"kategorie_id": "3"}))
     assert schreibpfade(c) == [("POST", "Voucher/Factory/saveVoucher"), ("PUT", "Voucher/999/bookAmount")]
+
+
+def test_standard_eingang_als_einnahme():
+    c = FakeClient(nachlesen_brutto="5000", nachlesen_kat="40")
+    s, _ = schreiber(c)
+    u = Umsatz("81", "1001", date(2026, 9, 1), D("5000"), "Web Wikinger GmbH", "Umbuchung", gegen_iban="DE11")
+    r = Standardregel("Umbuchung eigenes Konto", "", "transit", "40", "Geldtransit")
+    body = actions.neuer_beleg_body(u, r, "40")
+    assert body["voucher"]["creditDebit"] == "D" and body["voucherPosSave"][0]["sumGross"] == 5000.0
+    s.ausfuehren(Fall("standard", True, "Umbuchung", u.datum, umsatz=u, regel=r))
+    assert schreibpfade(c) == [("POST", "Voucher/Factory/saveVoucher"), ("PUT", "Voucher/999/bookAmount")]

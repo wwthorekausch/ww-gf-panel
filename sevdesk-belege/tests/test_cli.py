@@ -117,3 +117,10 @@ def test_steuerarten_aus_config():
     c = configparser.ConfigParser()
     c.read_string("[steuerarten]\nums\\.?\\s?st = 3\nlohnst = 25230\n")
     assert cli.lade_grenzen(c).steuerarten == ((r"ums\.?\s?st", "3"), ("lohnst", "25230"))
+
+
+def test_eigene_konten_aus_config():
+    c = configparser.ConfigParser()
+    c.read_string("[eigene_konten]\nibans = DE11 2022, DE37\n[kategorien]\ngeldtransit = 40\n")
+    g = cli.lade_grenzen(c)
+    assert g.eigene_ibans == frozenset({"DE112022", "DE37"}) and g.transit_kategorie == "40"
