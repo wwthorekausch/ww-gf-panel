@@ -154,9 +154,10 @@ def test_standard_anlegen_nachlesen_zuordnen():
     assert schreibpfade(c) == [("POST", "Voucher/Factory/saveVoucher"), ("PUT", "Voucher/999/bookAmount")]
 
 
-def test_zuordnen_body_betrag_positiv():
+def test_zuordnen_body_vorzeichen_wie_umsatz():
+    # Live-Befund: Ausgabe positiv gebucht -> sevDesk paidAmount -10, Status 750. Vorzeichen = Umsatz.
     b = actions.zuordnen_body(U, D("49.99"))
-    assert b["amount"] == 49.99 and b["checkAccountTransaction"] == {"id": 77, "objectName": "CheckAccountTransaction"}
+    assert b["amount"] == -49.99 and b["checkAccountTransaction"] == {"id": 77, "objectName": "CheckAccountTransaction"}
     assert b["checkAccount"] == {"id": 1001, "objectName": "CheckAccount"} and b["date"] == "2026-09-10"
 
 
@@ -245,3 +246,8 @@ def test_kurs_auf_6_stellen_gerundet():
     b = Beleg("5", date(2026, 9, 21), "X", D("1.00"), D("3"), "USD", 50, "default",
               (Position("11", "2819", D("0"), D("1.00")),), roh={})
     assert actions.beleg_speichern_body(b, "2819", D("1.01"))["voucher"]["propertyExchangeRate"] == "0.336667"
+
+
+def test_zuordnen_body_eingang_positiv():
+    e = Umsatz("78", "1002", date(2026, 9, 7), D("1190.00"), "Kunde", "RE-10001")
+    assert actions.zuordnen_body(e, D("1190.00"))["amount"] == 1190.0

@@ -33,3 +33,5 @@ Fixtures nur mit erfundenen Namen/Beträgen/IDs.
 ## Selflearning
 
 ### Lessons
+
+- `bookAmount`: `amount` mit Vorzeichen des Umsatzes (Ausgabe negativ). Positiv bei Ausgabe → Beleg Status 750, paidAmount negativ (Live-Lauf 2026-10-01).

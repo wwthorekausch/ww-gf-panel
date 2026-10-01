@@ -32,7 +32,7 @@ class LimitErreicht(Exception):
 
 def zuordnen_body(umsatz: Umsatz, betrag: Decimal) -> dict:
     return {
-        "amount": float(abs(betrag)),
+        "amount": float(abs(betrag)) * (-1 if umsatz.betrag < 0 else 1),   # Vorzeichen wie Umsatz (Ausgabe negativ)
         "date": umsatz.datum.isoformat(),
         "type": "N",
         "checkAccount": {"id": int(umsatz.konto_id), "objectName": "CheckAccount"},
