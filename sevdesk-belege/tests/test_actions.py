@@ -379,3 +379,104 @@ def test_auto_lauf_usd_mit_kategoriekorrektur():
     s.ausfuehren(f)
     body = c.bodies[0] if hasattr(c, "bodies") else None
     assert schreibpfade(c)[-1] == ("PUT", "Voucher/5/bookAmount")
+
+
+# --- GMI-Beleg hochladen ---
+class FakeGmi:
+    def __init__(self, tags=None):
+        self.calls, self.tags = [], tags or ["Software"]
+
+    def datei(self, uid):
+        self.calls.append(("GET", f"documents/{uid}/file"))
+        return b"%PDF-1.4 test"
+
+    def dokument(self, uid):
+        self.calls.append(("GET", f"documents/{uid}"))
+        return {"meta_data": {"tags": list(self.tags)}}
+
+    def put(self, path, json=None):
+        self.calls.append(("PUT", path, json))
+        return {"success": True}
+
+
+class UploadClient(FakeClient):
+    def upload(self, path, dateiname, inhalt):
+        self.calls.append(("UPLOAD", path))
+        return {"objects": {"filename": "tmp123.pdf"}}
+
+    def get(self, path, params=None):
+        r = super().get(path, params)
+        if path.startswith("Voucher/"):
+            r["objects"][0]["document"] = {"id": "9"}
+        return r
+
+
+def plan_fall():
+    import gmi
+    d = gmi.parse_dok({"documentUid": 77, "companyName": "Beispiel Hosting GmbH", "documentNumber": "R-1001",
+                       "documentDate": "2026-09-01", "grossAmount": 49.99, "currency": "EUR"})
+    plan = gmi.UploadPlan(True, "sicher", "2819", "default", D("19"), D("49.99"))
+    return d, U, plan
+
+
+def test_gmi_hochladen_ablauf_und_tag():
+    c, g = UploadClient(), FakeGmi()
+    s, _ = schreiber(c)
+    s.gmi = g
+    d, u, plan = plan_fall()
+    s.gmi_hochladen(d, u, plan)
+    assert schreibpfade(c) == [("UPLOAD", "Voucher/Factory/uploadTempFile"), ("POST", "Voucher/Factory/saveVoucher"),
+                               ("PUT", "Voucher/999/bookAmount")]
+    assert g.calls[-1] == ("PUT", "documents/77", {"tags": ["Software", "Sevdesk"]})
+
+
+def test_gmi_hochladen_dry_run_schreibt_nichts():
+    c, g = UploadClient(), FakeGmi()
+    s, _ = schreiber(c, dry_run=True)
+    s.gmi = g
+    s.gmi_hochladen(*plan_fall())
+    assert schreibpfade(c) == [] and not any(x[0] == "PUT" for x in g.calls)
+
+
+def test_gmi_hochladen_nicht_sicher_verweigert():
+    c, g = UploadClient(), FakeGmi()
+    s, _ = schreiber(c)
+    s.gmi = g
+    d, u, plan = plan_fall()
+    with pytest.raises(actions.RegelVerletzung):
+        s.gmi_hochladen(d, u, plan._replace(sicher=False))
+    assert schreibpfade(c) == []
+
+
+def test_gmi_tag_pfad_nur_tags():
+    s, _ = schreiber(UploadClient())
+    s.gmi = FakeGmi()
+    with pytest.raises(actions.RegelVerletzung):
+        s._gmi_schreibe("documents/77", {"tags": ["x"], "grossAmount": "1"})
+
+
+def test_gmi_regelverletzung_wird_nicht_abgeschwaecht(monkeypatch):
+    c, g = UploadClient(), FakeGmi()
+    s, _ = schreiber(c)
+    s.gmi = g
+    def boom(*a, **k):
+        raise actions.RegelVerletzung("x")
+    monkeypatch.setattr(s, "_gmi_schreibe", boom)
+    with pytest.raises(actions.RegelVerletzung):
+        s.gmi_hochladen(*plan_fall())
+
+
+def test_gmi_dry_run_laedt_kein_pdf():
+    c, g = UploadClient(), FakeGmi()
+    s, _ = schreiber(c, dry_run=True)
+    s.gmi = g
+    s.gmi_hochladen(*plan_fall())
+    assert ("GET", "documents/77/file") not in g.calls
+
+
+def test_gmi_beschreibung_ohne_nummer():
+    import gmi
+    d = gmi.parse_dok({"documentUid": 5, "companyName": "REWE", "documentNumber": "", "documentDate": "2026-05-28",
+                       "grossAmount": 8.56, "currency": "EUR"})
+    plan = gmi.UploadPlan(True, "sicher", "72", "default", D("7"), D("8.56"))
+    assert actions.gmi_beleg_body(d, U, plan, "t.pdf")["voucher"]["description"] == "GMI-5"

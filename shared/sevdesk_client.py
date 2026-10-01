@@ -33,6 +33,9 @@ class SevdeskClient:
     def put(self, path: str, json: dict | None = None) -> dict:
         return self._request("PUT", path, json=json)
 
+    def upload(self, path: str, dateiname: str, inhalt: bytes) -> dict:
+        return self._request("POST", path, files={"file": (dateiname, inhalt, "application/pdf")})
+
     def delete(self, path: str, json: dict | None = None) -> dict:
         return self._request("DELETE", path)
 

@@ -11,6 +11,7 @@ ERLAUBT = [(m, re.compile(p)) for m, p in (
     ("put", r"^Voucher/\d+/bookAmount$"),
     ("put", r"^Invoice/\d+/bookAmount$"),
     ("delete", r"^Voucher/\d+$"),          # nur über loesche_duplikat (Entwurf-Duplikate)
+    ("upload", r"^Voucher/Factory/uploadTempFile$"),   # nur über gmi_hochladen
 )]
 ROH_FELDER = ("id", "objectName", "voucherDate", "supplier", "supplierName", "description", "document",
               "creditDebit", "taxType", "voucherType", "currency", "deliveryDate", "paymentDeadline")
@@ -72,6 +73,23 @@ def usd_auf_eur_body(beleg: Beleg, bank: Decimal, kategorie_id: str | None = Non
     }], "voucherPosDelete": None}
 
 
+def gmi_beleg_body(dok, umsatz: Umsatz, plan, temp_datei: str) -> dict:
+    return {
+        "voucher": {
+            "objectName": "Voucher", "mapAll": True, "status": 100,
+            "voucherDate": dok.datum.isoformat(), "supplierName": dok.firma, "description": dok.nr or f"GMI-{dok.uid}",
+            "taxType": plan.steuerart, "creditDebit": "C", "voucherType": "VOU", "currency": "EUR",
+        },
+        "voucherPosSave": [{
+            "objectName": "VoucherPos", "mapAll": True,
+            "accountingType": {"id": int(plan.kategorie_id), "objectName": "AccountingType"},
+            "taxRate": float(plan.satz), "sumGross": float(plan.betrag), "net": False,
+        }],
+        "voucherPosDelete": None,
+        "filename": temp_datei,
+    }
+
+
 def neuer_beleg_body(umsatz: Umsatz, regel: Standardregel, kategorie_id: str) -> dict:
     betrag = abs(umsatz.betrag)
     return {
@@ -97,17 +115,22 @@ class Schreiber:
         self.zaehler = 0                 # begonnene Fälle (auch abgebrochene) — Limit zählt Versuche
         self.benutzte_umsaetze: set[str] = set()
         self._geschrieben = False
+        self.gmi = None                  # GmiClient, nur für gmi_hochladen
 
     def _schreibe(self, methode: str, pfad: str, body: dict, objekt_typ: str, objekt_id: str, aktion: str):
         if not any(m == methode and p.match(pfad) for m, p in ERLAUBT):
             raise RegelVerletzung(f"Schreibpfad nicht erlaubt: {pfad}")
-        aid = db.log_geplant(self.conn, self.run_id, objekt_typ, objekt_id, aktion, body, self.dry_run)
+        log = body if methode != "upload" else {"dateiname": body["dateiname"], "bytes": len(body["inhalt"])}
+        aid = db.log_geplant(self.conn, self.run_id, objekt_typ, objekt_id, aktion, log, self.dry_run)
         if self.dry_run:
             db.log_ergebnis(self.conn, aid, "dry-run")
             return None
         self._geschrieben = True         # auch bei Fehler: Request kann verarbeitet worden sein
         try:
-            res = getattr(self.client, methode)(pfad, json=body)
+            if methode == "upload":
+                res = self.client.upload(pfad, body["dateiname"], body["inhalt"])
+            else:
+                res = getattr(self.client, methode)(pfad, json=body)
         except Exception as e:
             db.log_ergebnis(self.conn, aid, "fehler", str(e))
             raise Abbruch(f"{aktion} fehlgeschlagen: {e}") from e
@@ -124,13 +147,14 @@ class Schreiber:
         if self.zaehler >= self.limit:
             raise LimitErreicht(f"Limit {self.limit} erreicht")
 
-    def _nachlesen(self, beleg_id: str, kategorie_id: str, brutto: Decimal, waehrung: str = "EUR") -> None:
+    def _nachlesen(self, beleg_id: str, kategorie_id: str, brutto: Decimal, waehrung: str = "EUR",
+                   dokument: bool = False) -> None:
         try:
             v = self.client.get(f"Voucher/{beleg_id}")["objects"][0]
             pos = self.client.get("VoucherPos", params={"voucher[id]": beleg_id,
                                                         "voucher[objectName]": "Voucher"})["objects"]
             ok = (int(v["status"]) == 100 and Decimal(str(v["sumGross"])) == brutto
-                  and (v.get("currency") or "EUR") == waehrung
+                  and (v.get("currency") or "EUR") == waehrung and (not dokument or bool(v.get("document")))
                   and pos and all(str(p["accountingType"]["id"]) == str(kategorie_id) for p in pos))
         except Exception as e:
             raise Abbruch(f"Nachlesen fehlgeschlagen (Beleg {beleg_id}): {e}") from e
@@ -237,4 +261,66 @@ class Schreiber:
             self._nachlesen(beleg.id, kategorie_id, bank, "EUR")
         self._schreibe("put", f"Voucher/{beleg.id}/bookAmount", zuordnen_body(umsatz, bank),
                        "Voucher", beleg.id, "zuordnen")
+        return "ok"
+
+    def _gmi_schreibe(self, pfad: str, body: dict) -> None:
+        """Einziger GMI-Schreibzugriff: Tags eines Dokuments setzen."""
+        if not (re.match(r"^documents/\d+$", pfad) and set(body) == {"tags"}):
+            raise RegelVerletzung(f"GMI-Schreibzugriff nicht erlaubt: {pfad} {sorted(body)}")
+        aid = db.log_geplant(self.conn, self.run_id, "GMI", pfad, "tag setzen", body, self.dry_run)
+        if self.dry_run:
+            db.log_ergebnis(self.conn, aid, "dry-run")
+            return
+        self._geschrieben = True
+        try:
+            self.gmi.put(pfad, json=body)
+        except Exception as e:
+            db.log_ergebnis(self.conn, aid, "fehler", str(e))
+            raise Abbruch(f"GMI-Tag fehlgeschlagen: {e}") from e
+        db.log_ergebnis(self.conn, aid, "ok")
+
+    def gmi_hochladen(self, dok, umsatz: Umsatz, plan) -> str:
+        """PDF aus GMI holen, als Beleg in sevDesk anlegen, nachlesen, zuordnen, in GMI Tag 'Sevdesk' setzen."""
+        if not plan.sicher:
+            raise RegelVerletzung(f"GMI-Dokument {dok.uid}: Upload nicht freigegeben ({plan.grund})")
+        self._pruefe_datum(dok.datum, umsatz.datum)
+        self._pruefe_limit()
+        if umsatz.id in self.benutzte_umsaetze:
+            raise Abbruch(f"Umsatz {umsatz.id} in diesem Lauf bereits verwendet")
+        self.zaehler += 1
+        self._geschrieben = False
+        try:
+            inhalt = b"" if self.dry_run else self.gmi.datei(dok.uid)
+            res = self._schreibe("upload", "Voucher/Factory/uploadTempFile",
+                                 {"dateiname": f"{dok.nr or dok.uid}.pdf", "inhalt": inhalt}, "Voucher", "neu", "pdf hochladen")
+            try:
+                tmp = "dry-run.pdf" if self.dry_run else res["objects"]["filename"]
+            except (KeyError, TypeError) as e:
+                raise Abbruch(f"Unerwartete Upload-Antwort: {e}") from e
+            body = gmi_beleg_body(dok, umsatz, plan, tmp)
+            res = self._schreibe("post", "Voucher/Factory/saveVoucher", body, "Voucher", "neu", f"anlegen aus GMI {dok.uid}")
+            try:
+                vid = "0" if self.dry_run else str(res["objects"]["voucher"]["id"])
+            except (KeyError, TypeError) as e:
+                raise Abbruch(f"Unerwartete Antwort beim Anlegen: {e}") from e
+            if not self.dry_run:
+                self._nachlesen(vid, plan.kategorie_id, plan.betrag, "EUR", dokument=True)
+            self._schreibe("put", f"Voucher/{vid}/bookAmount", zuordnen_body(umsatz, plan.betrag), "Voucher", vid, "zuordnen")
+            tags = list((self.gmi.dokument(dok.uid).get("meta_data") or {}).get("tags") or [])
+            if "Sevdesk" not in tags:
+                self._gmi_schreibe(f"documents/{dok.uid}", {"tags": tags + ["Sevdesk"]})
+        except RegelVerletzung:
+            raise
+        except Abbruch as e:
+            if self._geschrieben and not isinstance(e, AbbruchNachSchreiben):
+                raise AbbruchNachSchreiben(str(e)) from e
+            raise
+        except Exception as e:
+            if self._geschrieben:
+                raise AbbruchNachSchreiben(f"GMI-Upload {dok.uid}: {e}") from e
+            raise Abbruch(f"GMI-Upload {dok.uid}: {e}") from e
+        finally:
+            if self._geschrieben:
+                self.benutzte_umsaetze.add(umsatz.id)
+        self.benutzte_umsaetze.add(umsatz.id)
         return "ok"

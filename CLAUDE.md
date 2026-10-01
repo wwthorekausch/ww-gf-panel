@@ -41,6 +41,7 @@ Jedes Modul verwaltet eigene `config.ini` innerhalb seines Ordners (gitignored, 
 
 - Rechnungen, Gutschriften und Stornorechnungen (Ausgangsbelege) nie direkt im Status ändern (kein manuelles bezahlt/storniert/Entwurf, kein Löschen, keine Inhaltsänderung). Erlaubt: Zahlung zuordnen (`bookAmount`) — dass sevDesk dadurch selbst auf bezahlt setzt, ist ok.
 - Nur Belege und Umsätze ab 01.01.2025 anfassen, Abarbeitung von neu nach alt.
+- GetMyInvoices: Key nur aus Keychain `ww-gf-cockpit-getmyinvoices`. Einziger Schreibzugriff: Tag „Sevdesk“ an Dokument anhängen (vorhandene Tags bleiben), nur über `sevdesk-belege gmi-hochladen`.
 - Nie löschen — einzige Ausnahme: Belegentwurf-Duplikate (Status 50, gleiche Belegnummer + Lieferant + Betrag + Datum, ältester bleibt), nur über `sevdesk-belege aufraeumen` nach Einzel-Freigabe „j“ (Entscheidung 2026-10-01).
 - sevDesk-Schreibzugriffe nur über Cockpit-Befehle mit Dry-Run-Vorschau; API-Token nur aus macOS Keychain (`security find-generic-password -s ww-gf-cockpit-sevdesk -w`), nie in Dateien.
 

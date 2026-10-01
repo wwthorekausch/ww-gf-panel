@@ -274,6 +274,59 @@ def cmd_usd_auf_eur(args) -> int:
     return 0
 
 
+def _gmi_abgleich():
+    from shared.gmi_client import GmiClient
+    import gmi
+    config = _config()
+    grenzen = lade_grenzen(config)
+    sevdesk = SevdeskClient(keychain_token(KEYCHAIN_SERVICE))
+    daten, faelle = _einstufen(sevdesk, grenzen)
+    wissen = {**rules.lerne(daten.historie, grenzen), **lade_fest(FEST_PFAD)}
+    ohne = [f.umsatz for f in faelle if f.art == "ohne_beleg" and f.umsatz.betrag < 0]
+    nummern = {b.belegnr for b in daten.belege + daten.historie if b.belegnr}
+    client = GmiClient(keychain_token("ww-gf-cockpit-getmyinvoices"), config.get("getmyinvoices", "konto", fallback=""))
+    docs = [gmi.parse_dok(d) for d in client.dokumente("2024-11-01") if d.get("documentType") in gmi.BELEG_TYPEN]
+    return gmi.einstufen(ohne, docs, nummern, grenzen), wissen, grenzen, sevdesk, client
+
+
+def cmd_gmi_hochladen(args) -> int:
+    """GMI-Dokumente (nur in GMI) als Beleg mit PDF nach sevDesk, zuordnen, Tag 'Sevdesk' in GMI."""
+    import gmi
+    erg, wissen, grenzen, sevdesk, client = _gmi_abgleich()
+    plaene = [(e, gmi.upload_plan(e, wissen, grenzen)) for e in erg if e.status == "nur_gmi"]
+    if args.umsatz:
+        plaene = [(e, p) for e, p in plaene if e.umsatz.id == args.umsatz]
+    sicher = [(e, p) for e, p in plaene if p.sicher]
+    for e, p in sicher:
+        print(f"{e.umsatz.datum}  {e.dok.firma[:28]:<28} Nr {e.dok.nr[:18]:<18} {p.betrag:>9} €  Kat {p.kategorie_id}  "
+              f"{p.steuerart}:{p.satz}  ↔ Umsatz {e.umsatz.id}")
+    from collections import Counter
+    print("\nnicht sicher:", dict(Counter(p.grund for _, p in plaene if not p.sicher)))
+    conn = db.connect(MODULE_DIR)
+    schreiber = actions.Schreiber(sevdesk, conn, db.run_start(conn, args.dry_run), args.dry_run, args.limit)
+    schreiber.gmi = client
+    z = {"erledigt": 0, "abgebrochen": 0}
+    for e, p in sicher:
+        try:
+            schreiber.gmi_hochladen(e.dok, e.umsatz, p)
+            z["erledigt"] += 1
+        except actions.LimitErreicht:
+            print(f"Limit {args.limit} erreicht")
+            break
+        except actions.AbbruchNachSchreiben as ex:
+            print(f"GESTOPPT nach Schreibvorgang bei GMI {e.dok.uid}: {ex} — Zustand prüfen")
+            return 1
+        except actions.Abbruch as ex:
+            z["abgebrochen"] += 1
+            print(f"  abgebrochen GMI {e.dok.uid}: {ex}")
+        except actions.RegelVerletzung as ex:
+            print(f"STOPP — harte Regel verletzt: {ex}")
+            return 2
+    print(f"\n{'DRY-RUN — nichts geschrieben' if args.dry_run else 'geschrieben'}: {z['erledigt']} erledigt, "
+          f"{z['abgebrochen']} abgebrochen ({len(sicher)} sicher von {len(plaene)} nur-in-GMI)")
+    return 0
+
+
 def cmd_gmi_suche(args) -> int:
     """Zahlungen ohne Beleg in GetMyInvoices suchen (nur lesend). Bericht: gmi_bericht.csv (gitignored)."""
     import csv
@@ -342,6 +395,10 @@ def main() -> int:
         p.add_argument("--art", choices=("beleg", "rechnung", "standard"), help="nur diese Fallart")
     sub.add_parser("status")
     sub.add_parser("gmi-suche")
+    p = sub.add_parser("gmi-hochladen")
+    p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--limit", type=int, default=20)
+    p.add_argument("--umsatz")
     p = sub.add_parser("usd-auf-eur")
     p.add_argument("--beleg", required=True)
     p.add_argument("--umsatz", required=True)
@@ -353,7 +410,7 @@ def main() -> int:
     args = parser.parse_args()
     handlers = {"run": cmd_run, "review": cmd_review, "status": cmd_status, "init-regeln": cmd_init_regeln,
                 "aufraeumen": cmd_aufraeumen, "usd-auf-eur": cmd_usd_auf_eur,
-                "gmi-suche": cmd_gmi_suche}
+                "gmi-suche": cmd_gmi_suche, "gmi-hochladen": cmd_gmi_hochladen}
     return handlers[args.command](args)
 
 
