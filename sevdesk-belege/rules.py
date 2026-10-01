@@ -18,7 +18,7 @@ ART_NACH_KATEGORIE = {
     "bezahlte Umsatzsteuer": "finanzamt",
 }
 GEBUEHREN_MUSTER = (r"(^|\s)(entgelt\b|kontof(ü|ue)hrung|preis für sepa|kartengeb(ü|ue)hr"
-                    r"|monatlicher kartenpreis|für w(ä|ae)hrungsumrechnung)")
+                    r"|monatlicher kartenpreis|für w(ä|ae)hrungsumrechn)")
 
 
 def norm(text: str) -> str:

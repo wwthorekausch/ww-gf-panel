@@ -87,3 +87,14 @@ def test_delete_kein_retry_bei_5xx(monkeypatch):
     with pytest.raises(RuntimeError):
         client.delete("Voucher/1")
     assert aufrufe == ["DELETE"]
+
+
+def test_gmi_client_paginiert_und_header(monkeypatch):
+    from shared import gmi_client
+    c = gmi_client.GmiClient("k", "G-1")
+    assert c._session.headers["X-API-KEY"] == "k" and "G-1" in c._session.headers["User-Agent"]
+    seiten = [FakeResp(200, {"maxPages": 2, "records": [{"documentUid": 1}]}),
+              FakeResp(200, {"maxPages": 2, "records": [{"documentUid": 2}]})]
+    gesehen = []
+    monkeypatch.setattr(c._session, "request", lambda m, url, **k: gesehen.append(k["params"]["pageNumber"]) or seiten.pop(0))
+    assert [d["documentUid"] for d in c.dokumente("2025-01-01")] == [1, 2] and gesehen == [1, 2]

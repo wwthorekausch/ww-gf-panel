@@ -274,6 +274,42 @@ def cmd_usd_auf_eur(args) -> int:
     return 0
 
 
+def cmd_gmi_suche(args) -> int:
+    """Zahlungen ohne Beleg in GetMyInvoices suchen (nur lesend). Bericht: gmi_bericht.csv (gitignored)."""
+    import csv
+    from collections import Counter
+    from shared.gmi_client import GmiClient
+    import gmi
+    config = _config()
+    grenzen = lade_grenzen(config)
+    sevdesk = SevdeskClient(keychain_token(KEYCHAIN_SERVICE))
+    daten, faelle = _einstufen(sevdesk, grenzen)
+    ohne = [f.umsatz for f in faelle if f.art == "ohne_beleg" and f.umsatz.betrag < 0]
+    nummern = {b.belegnr for b in daten.belege + daten.historie if b.belegnr}
+    client = GmiClient(keychain_token("ww-gf-cockpit-getmyinvoices"), config.get("getmyinvoices", "konto", fallback=""))
+    docs = [gmi.parse_dok(d) for d in client.dokumente("2024-11-01") if d.get("documentType") in gmi.BELEG_TYPEN]
+    erg = gmi.einstufen(ohne, docs, nummern, grenzen)
+    pfad = MODULE_DIR / "gmi_bericht.csv"
+    with pfad.open("w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh, delimiter=";")
+        w.writerow(["status", "datum", "betrag", "empfaenger", "zweck", "umsatz_id", "gmi_uid", "gmi_firma", "gmi_nr", "gmi_datum", "gmi_brutto", "gmi_waehrung"])
+        for e in erg:
+            d = e.dok
+            w.writerow([e.status, e.umsatz.datum, e.umsatz.betrag, e.umsatz.name, e.umsatz.zweck[:80], e.umsatz.id,
+                        d.uid if d else "", d.firma if d else "", d.nr if d else "", d.datum if d else "",
+                        d.brutto if d else "", d.waehrung if d else ""])
+    print(f"{len(docs)} GetMyInvoices-Dokumente, {len(ohne)} Zahlungen ohne Beleg geprüft\n")
+    for status in ("nur_gmi", "in_sevdesk", "mehrdeutig", "nicht_gefunden"):
+        xs = [e for e in erg if e.status == status]
+        print(f"  {status:<15} {len(xs):>5}  {sum(-e.umsatz.betrag for e in xs):>12.2f} €")
+    top = Counter(rules.norm(e.umsatz.name) or rules.norm(e.umsatz.zweck)[:30] for e in erg if e.status == "nicht_gefunden")
+    print("\nNicht gefunden — häufigste Empfänger:")
+    for k, n in top.most_common(15):
+        print(f"  {n:>4}  {k}")
+    print(f"\nBericht: {pfad.name}")
+    return 0
+
+
 def cmd_status(args) -> int:
     conn = db.connect(MODULE_DIR)
     for r in db.letzte_runs(conn):
@@ -305,6 +341,7 @@ def main() -> int:
         p.add_argument("--umsatz", help="nur den Fall mit dieser Umsatz-ID bearbeiten")
         p.add_argument("--art", choices=("beleg", "rechnung", "standard"), help="nur diese Fallart")
     sub.add_parser("status")
+    sub.add_parser("gmi-suche")
     p = sub.add_parser("usd-auf-eur")
     p.add_argument("--beleg", required=True)
     p.add_argument("--umsatz", required=True)
@@ -315,7 +352,8 @@ def main() -> int:
     p.add_argument("--force", action="store_true")
     args = parser.parse_args()
     handlers = {"run": cmd_run, "review": cmd_review, "status": cmd_status, "init-regeln": cmd_init_regeln,
-                "aufraeumen": cmd_aufraeumen, "usd-auf-eur": cmd_usd_auf_eur}
+                "aufraeumen": cmd_aufraeumen, "usd-auf-eur": cmd_usd_auf_eur,
+                "gmi-suche": cmd_gmi_suche}
     return handlers[args.command](args)
 
 

@@ -34,3 +34,7 @@ skapst|solskap|kistkap|kapitalertrag = pruefen
 [eigene_konten]
 ; eigene IBANs, kommagetrennt — Zahlung mit dieser Gegen-IBAN = Umbuchung (Geldtransit)
 ibans = DE00 0000 0000 0000 0000 00
+
+[getmyinvoices]
+; Konto-ID oben rechts in GetMyInvoices (für User-Agent). API-Key: Keychain ww-gf-cockpit-getmyinvoices
+konto = G-000000-0

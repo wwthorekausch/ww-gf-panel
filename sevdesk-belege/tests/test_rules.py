@@ -562,3 +562,8 @@ def test_umbuchung_fremde_iban_nicht():
 def test_umbuchung_commerce_nie():
     u = Umsatz("t1", "1", date(2026, 9, 1), D("-5000"), "Web Wikinger Commerce GmbH", "x", gegen_iban="DE11202208000027776310")
     assert not rules.bewerte_standard(u, [], {}, G_TR).sicher
+
+
+def test_gebuehr_waehrungsumrechnung_abgekuerzt():
+    regel = Standardregel("Bankgebühren", rules.GEBUEHREN_MUSTER, "gebuehren", "70", "Bank")
+    assert rules.passende_regeln(umsatz(name="", zweck="1,95% für Währungsumrechn. 12,34 USD"), [regel])
