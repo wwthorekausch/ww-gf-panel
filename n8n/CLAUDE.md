@@ -12,6 +12,8 @@ Nach dem Import in n8n:
 3. Im Knoten „Gmail: Label paperless setzen“ das Label `paperless` auswählen (Label vorher in Gmail anlegen).
 4. Einmal manuell testen, dann aktivieren.
 
+Upload setzt Dokumenttyp `1` (Eingangsrechnung) und Tag `3` (Eingangsrechnung) — Paperless-IDs, keine Namen. Weitere Tags: zusätzliches Body-Feld `tags` mit weiterer ID.
+
 Doppelte Anhänge (gleicher Dateiname + Größe) werden pro Lauf nur einmal hochgeladen; die Mail bekommt trotzdem das Label. Paperless erkennt zusätzlich inhaltsgleiche Dateien.
 
 Bekannte Grenze: Mails mit Anhang, aber ohne PDF, bekommen kein Label und werden jeden Lauf erneut gelesen (harmlos; ggf. manuell labeln).

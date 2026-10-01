@@ -81,6 +81,14 @@
             {
               "name": "title",
               "value": "={{ $json.fileName.replace(/\\.pdf$/i, '') }}"
+            },
+            {
+              "name": "document_type",
+              "value": "1"
+            },
+            {
+              "name": "tags",
+              "value": "3"
             }
           ]
         },
