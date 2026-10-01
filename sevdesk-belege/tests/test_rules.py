@@ -497,3 +497,16 @@ def test_festgelegte_kategorie_wird_korrigiert():
     fest = {"hetzner online": LieferantWissen("2819", "default:19", D("0"), fest=True)}
     f = bewerte(beleg(kat="2"), wissen=fest)
     assert f.sicher and f.korrektur == {"kategorie_id": "2819"}
+
+
+def test_lohn_ohne_vormonatspruefung_wenn_aus():
+    g = Grenzen(lohn_toleranz_prozent=None)
+    assert rules.bewerte_standard(umsatz(betrag="-2900", name="Max Mustermann", zweck="Gehalt"), REGELN, W_LOHN, g).sicher
+    assert rules.bewerte_standard(umsatz(betrag="-2000", name="Max Mustermann", zweck=""), REGELN, {}, g).sicher
+
+
+def test_gebuehren_kartenpreis_und_waehrungsumrechnung():
+    regel = Standardregel("Bankgebühren", rules.GEBUEHREN_MUSTER, "gebuehren", "70", "Bank")
+    treffer = lambda zweck: bool(rules.passende_regeln(umsatz(name="", zweck=zweck), [regel]))
+    assert treffer("Monatlicher Kartenpreis 09/2026")
+    assert treffer("1,95 für Währungsumrechnung")

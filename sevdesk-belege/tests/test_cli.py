@@ -99,3 +99,15 @@ def test_fest_mit_ausschluss(tmp_path):
     p.write_text('{"rewe": {"kategorie_id": "72", "steuer": "default:7"}, "web wikinger": {"ausschliessen": true}}')
     assert set(cli.lade_fest(p)) == {"rewe"}
     assert cli.lade_ausgeschlossen(p) == frozenset({"web wikinger"})
+
+
+def test_lohn_toleranz_aus():
+    c = configparser.ConfigParser()
+    c.read_string("[grenzen]\nlohn_toleranz_prozent = aus\n")
+    assert cli.lade_grenzen(c).lohn_toleranz_prozent is None
+
+
+def test_nur_art():
+    b = Fall("beleg", True, "sicher", date(2026, 9, 1))
+    assert cli.nur_art([fall(1), b], "standard") == [fall(1)]
+    assert len(cli.nur_art([fall(1), b], None)) == 2

@@ -17,7 +17,8 @@ ART_NACH_KATEGORIE = {
     "Kontoführung / Kartengebühren": "gebuehren",
     "bezahlte Umsatzsteuer": "finanzamt",
 }
-GEBUEHREN_MUSTER = r"(^|\s)(entgelt\b|kontof(ü|ue)hrung|preis für sepa|kartengeb(ü|ue)hr)"
+GEBUEHREN_MUSTER = (r"(^|\s)(entgelt\b|kontof(ü|ue)hrung|preis für sepa|kartengeb(ü|ue)hr"
+                    r"|monatlicher kartenpreis|für w(ä|ae)hrungsumrechnung)")
 
 
 def norm(text: str) -> str:
@@ -237,6 +238,8 @@ def bewerte_standard(umsatz: Umsatz, regeln: list[Standardregel], wissen: dict, 
             return fall(False, f"Gebühr über {grenzen.gebuehren_max} €")
         return fall(True, "Standardbuchung")
     if regel.art in ("lohn", "krankenkasse", "miete"):
+        if grenzen.lohn_toleranz_prozent is None:
+            return fall(True, "Standardbuchung")
         w = wissen.get(norm(regel.lieferant))
         if w is None:
             return fall(False, "kein Vormonatsbetrag")

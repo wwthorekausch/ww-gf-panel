@@ -35,7 +35,8 @@ def lade_grenzen(config: configparser.ConfigParser) -> Grenzen:
         tage_nachher=int(g.get("tage_nachher", d.tage_nachher)),
         max_betrag=Decimal(g.get("max_betrag", str(d.max_betrag))),
         min_historie=int(g.get("min_historie", d.min_historie)),
-        lohn_toleranz_prozent=Decimal(g.get("lohn_toleranz_prozent", str(d.lohn_toleranz_prozent))),
+        lohn_toleranz_prozent=(None if g.get("lohn_toleranz_prozent", "").strip().lower() == "aus"
+                               else Decimal(g.get("lohn_toleranz_prozent", str(d.lohn_toleranz_prozent)))),
         gebuehren_max=Decimal(g.get("gebuehren_max", str(d.gebuehren_max))),
         tage_eindeutig=int(g.get("tage_eindeutig", d.tage_eindeutig)),
         standard_kategorie_ids=frozenset(i.strip() for i in ids.split(",") if i.strip()),
@@ -93,6 +94,10 @@ def verarbeite(faelle: list[Fall], schreiber, conn) -> dict:
     return z
 
 
+def nur_art(faelle: list[Fall], art: str | None) -> list[Fall]:
+    return faelle if art is None else [f for f in faelle if f.art == art]
+
+
 def nur_umsatz(faelle: list[Fall], umsatz_id: str | None) -> list[Fall]:
     if umsatz_id is None:
         return faelle
@@ -140,7 +145,7 @@ def cmd_run(args) -> int:
     grenzen = lade_grenzen(_config())
     client = SevdeskClient(keychain_token(KEYCHAIN_SERVICE))
     _, faelle = _einstufen(client, grenzen)
-    sicher = nur_umsatz([f for f in faelle if f.sicher], args.umsatz)
+    sicher = nur_art(nur_umsatz([f for f in faelle if f.sicher], args.umsatz), args.art)
     for f in sicher:
         print(_zeile(f))
     conn = db.connect(MODULE_DIR)
@@ -293,6 +298,7 @@ def main() -> int:
         p.add_argument("--dry-run", action="store_true")
         p.add_argument("--limit", type=int, default=20)
         p.add_argument("--umsatz", help="nur den Fall mit dieser Umsatz-ID bearbeiten")
+        p.add_argument("--art", choices=("beleg", "rechnung", "standard"), help="nur diese Fallart")
     sub.add_parser("status")
     p = sub.add_parser("usd-auf-eur")
     p.add_argument("--beleg", required=True)

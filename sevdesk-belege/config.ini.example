@@ -5,7 +5,8 @@ tage_vorher = 5
 tage_nachher = 45
 max_betrag = 2000
 min_historie = 2
-lohn_toleranz_prozent = 10
+; "aus" = Lohn/Krankenkasse/Miete ohne Vormonatsvergleich buchen
+lohn_toleranz_prozent = aus
 gebuehren_max = 100
 ; mehrere passende Zahlungen (Monatsabos): genau eine in ±N Tagen um Belegdatum wird genommen
 tage_eindeutig = 5
