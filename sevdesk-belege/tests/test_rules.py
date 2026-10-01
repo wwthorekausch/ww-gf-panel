@@ -536,3 +536,8 @@ def test_finanzamt_mit_eindeutiger_steuerart_sicher():
 def test_finanzamt_ohne_steuerart_review():
     f = rules.bewerte_standard(umsatz(betrag="-266", name="Finanzamt Kiel", zweck="2092961866222"), REGELN, {}, G_ST)
     assert not f.sicher and "Steuerart" in f.grund
+
+
+def test_beleg_ohne_dokument_nicht_sicher():
+    f = bewerte(beleg(dok=False))
+    assert not f.sicher and f.grund == "Beleg ohne Dokument (PDF fehlt)"

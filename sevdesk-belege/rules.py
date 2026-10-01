@@ -153,6 +153,8 @@ def bewerte_beleg(beleg: Beleg, kandidaten: list[Umsatz], rueck: Counter, wissen
         return fall(False, "Belegdatum fehlt oder in der Zukunft")
     if beleg.id in dup_ids:
         return fall(False, "mögliches Duplikat")
+    if not beleg.hat_dokument:
+        return fall(False, "Beleg ohne Dokument (PDF fehlt)")
     if not kandidaten:
         return fall(False, "keine passende Zahlung")
     if len(kandidaten) > 1:
