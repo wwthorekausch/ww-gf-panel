@@ -306,7 +306,7 @@ class Schreiber:
             if not self.dry_run:
                 self._nachlesen(vid, plan.kategorie_id, plan.betrag, "EUR", dokument=True)
             self._schreibe("put", f"Voucher/{vid}/bookAmount", zuordnen_body(umsatz, plan.betrag), "Voucher", vid, "zuordnen")
-            tags = list((self.gmi.dokument(dok.uid).get("meta_data") or {}).get("tags") or [])
+            tags = list(dok.tags)          # aus der eben geladenen Dokumentliste (spart GMI-Rate-Limit)
             if "Sevdesk" not in tags:
                 self._gmi_schreibe(f"documents/{dok.uid}", {"tags": tags + ["Sevdesk"]})
         except RegelVerletzung:

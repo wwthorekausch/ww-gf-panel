@@ -414,7 +414,7 @@ class UploadClient(FakeClient):
 def plan_fall():
     import gmi
     d = gmi.parse_dok({"documentUid": 77, "companyName": "Beispiel Hosting GmbH", "documentNumber": "R-1001",
-                       "documentDate": "2026-09-01", "grossAmount": 49.99, "currency": "EUR"})
+                       "documentDate": "2026-09-01", "grossAmount": 49.99, "currency": "EUR", "tags": ["Software"]})
     plan = gmi.UploadPlan(True, "sicher", "2819", "default", D("19"), D("49.99"))
     return d, U, plan
 
@@ -428,6 +428,7 @@ def test_gmi_hochladen_ablauf_und_tag():
     assert schreibpfade(c) == [("UPLOAD", "Voucher/Factory/uploadTempFile"), ("POST", "Voucher/Factory/saveVoucher"),
                                ("PUT", "Voucher/999/bookAmount")]
     assert g.calls[-1] == ("PUT", "documents/77", {"tags": ["Software", "Sevdesk"]})
+    assert ("GET", "documents/77") not in g.calls     # Tags kommen aus der Dokumentliste, kein Extra-Call
 
 
 def test_gmi_hochladen_dry_run_schreibt_nichts():
