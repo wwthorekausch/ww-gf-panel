@@ -181,6 +181,9 @@ def bewerte_beleg(beleg: Beleg, kandidaten: list[Umsatz], rueck: Counter, wissen
         korrektur["brutto_eur"] = bank
     if korrektur and len(beleg.positionen) != 1:
         return fall(False, "mehrere Positionen, Korrektur nicht eindeutig", u)
+    if beleg.waehrung != "EUR":
+        # Live-Befund: API liest Positionsbetrag als Fremdwährung, Kurs wird ignoriert -> nie automatisch
+        return fall(False, "USD: Betrag/Kurs in sevDesk von Hand anpassen", u, korrektur)
     return fall(True, "sicher", u, korrektur)
 
 

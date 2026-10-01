@@ -187,7 +187,7 @@ W_USD = rules.lerne(historie(lieferant="Bitwarden Inc.", satz="0"), G)
 def test_usd_innerhalb_toleranz_wird_angepasst():
     u = umsatz(betrag="-71.82", name="BITWARDEN")        # 71.82 / 69.73 = +2.997 %
     f = bewerte(usd_beleg("69.73"), [u], wissen=W_USD)
-    assert f.sicher and f.korrektur == {"brutto_eur": D("71.82")}
+    assert not f.sicher and f.grund.startswith("USD") and f.korrektur == {"brutto_eur": D("71.82")}
 
 
 def test_usd_ausserhalb_toleranz_kein_kandidat():
@@ -199,7 +199,7 @@ def test_usd_ausserhalb_toleranz_kein_kandidat():
 def test_usd_exakt_keine_korrektur():
     u = umsatz(betrag="-69.73", name="BITWARDEN")
     f = bewerte(usd_beleg("69.73"), [u], wissen=W_USD)
-    assert f.sicher and f.korrektur == {}
+    assert not f.sicher and f.grund.startswith("USD")
 
 
 def test_eingang_ist_kein_kandidat_fuer_beleg():

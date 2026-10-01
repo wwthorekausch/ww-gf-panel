@@ -285,3 +285,14 @@ def test_delete_nur_auf_voucher_pfad():
     s, _ = schreiber(FakeClient())
     with pytest.raises(actions.RegelVerletzung):
         s._schreibe("delete", "Invoice/5", {}, "X", "5", "test")
+
+
+def test_guard_kein_speichern_fremdwaehrung():
+    # Live-Befund 2026-10-01: sevDesk liest Positions-sumGross bei USD als Fremdwährung -> Beleg verfälscht
+    usd = Beleg("5", date(2026, 9, 21), "Bitwarden", D("69.73"), D("80"), "USD", 50, "default",
+                (Position("11", "2819", D("0"), D("69.73")),), roh={"id": "5", "currency": "USD"})
+    c = FakeClient()
+    s, _ = schreiber(c)
+    with pytest.raises(actions.RegelVerletzung, match="Fremdwährung"):
+        s.ausfuehren(fall_beleg(b=usd))
+    assert schreibpfade(c) == []

@@ -152,6 +152,8 @@ class Schreiber:
 
     def _beleg(self, fall: Fall) -> str:
         b, u = fall.beleg, fall.umsatz
+        if b.waehrung != "EUR":
+            raise RegelVerletzung(f"Beleg {b.id}: Fremdwährung {b.waehrung} — API-Semantik ungeklärt, kein Schreiben")
         self._pruefe_datum(b.datum, u.datum)
         kat = fall.korrektur.get("kategorie_id", b.kategorie_id)
         brutto = fall.korrektur.get("brutto_eur", b.brutto_eur)

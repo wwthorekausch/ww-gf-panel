@@ -37,4 +37,6 @@ Fixtures nur mit erfundenen Namen/Beträgen/IDs.
 
 ### Lessons
 
+- USD-Belege: `saveVoucher` liest Positions-`sumGross` als Fremdwährung, `propertyExchangeRate` wird ignoriert → Beleg verfälscht (Live 2026-10-01, Beleg manuell repariert). Fremdwährung nie automatisch schreiben, bis Kurs-Feld geklärt.
+
 - `bookAmount`: `amount` mit Vorzeichen des Umsatzes (Ausgabe negativ). Positiv bei Ausgabe → Beleg Status 750, paidAmount negativ (Live-Lauf 2026-10-01).
