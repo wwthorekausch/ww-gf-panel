@@ -85,7 +85,13 @@
           ]
         },
         "options": {
-          "timeout": 60000
+          "timeout": 60000,
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "data"
+            }
+          }
         }
       },
       "id": "a4",
@@ -108,7 +114,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Erst nach erfolgreichem Upload: jede abgerufene Mail mit PDF genau einmal markieren\n// (auch Mails, deren Anhang als Duplikat übersprungen wurde)\nconst ids = new Set();\nfor (const item of $('Gmail: GMI-Mails holen').all()) {\n  const hatPdf = Object.values(item.binary || {}).some(b =>\n    (b.mimeType || '').includes('pdf') || (b.fileName || '').toLowerCase().endsWith('.pdf'));\n  if (hatPdf) ids.add(item.json.id);\n}\nreturn [...ids].map(id => ({ json: { messageId: id } }));"
+        "jsCode": "// 1) Upload-Antworten prüfen: Paperless liefert Text (\"OK\" oder Task-UUID). HTML = Login/Fehlerseite -> abbrechen, kein Label\nfor (const item of $input.all()) {\n  const antwort = String(item.json.data ?? '').trim();\n  if (!antwort || antwort.toLowerCase().includes('<html')) {\n    throw new Error(`Paperless-Upload fehlgeschlagen (Antwort: ${antwort.slice(0, 120) || 'leer'}) – Token/URL prüfen`);\n  }\n}\n// 2) Jede abgerufene Mail mit PDF genau einmal markieren (auch wenn ihr Anhang als Duplikat übersprungen wurde)\nconst ids = new Set();\nfor (const item of $('Gmail: GMI-Mails holen').all()) {\n  const hatPdf = Object.values(item.binary || {}).some(b =>\n    (b.mimeType || '').includes('pdf') || (b.fileName || '').toLowerCase().endsWith('.pdf'));\n  if (hatPdf) ids.add(item.json.id);\n}\nreturn [...ids].map(id => ({ json: { messageId: id } }));"
       },
       "id": "a5",
       "name": "Mail-IDs sammeln",
