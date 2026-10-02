@@ -33,3 +33,11 @@ def test_loeschen_kein_retry(monkeypatch):
     with pytest.raises(RuntimeError):
         c.loeschen(7)
     assert aufrufe == [("DELETE", "https://p.example/api/documents/7/")]
+
+
+def test_patch_nur_erlaubte_felder(monkeypatch):
+    c = paperless_client.PaperlessClient("t", "https://p.example")
+    monkeypatch.setattr(c._session, "request", lambda m, url, **k: R(200, {"id": 1}))
+    c.dokument_patchen(1, {"storage_path": 1, "custom_fields": []})
+    with pytest.raises(ValueError):
+        c.dokument_patchen(1, {"title": "neu"})

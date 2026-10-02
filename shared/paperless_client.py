@@ -5,7 +5,8 @@ import requests
 
 RETRY_STATUS = {429, 500, 502, 503, 504}
 VERSUCHE = 3
-FELDER = "id,title,content,created,added,original_file_name,correspondent,document_type,tags"
+FELDER = "id,title,content,created,added,original_file_name,correspondent,document_type,tags,custom_fields,storage_path"
+PATCH_ERLAUBT = {"custom_fields", "correspondent", "storage_path"}
 
 
 class PaperlessClient:
@@ -37,3 +38,20 @@ class PaperlessClient:
 
     def loeschen(self, doc_id) -> None:
         self._request("DELETE", f"{self.base}/api/documents/{doc_id}/")
+
+    def alle(self, endpunkt: str) -> list[dict]:
+        url, params, out = f"{self.base}/api/{endpunkt}/", {"page_size": 100}, []
+        while url:
+            d = self._request("GET", url, params=params).json()
+            out += d.get("results") or []
+            url, params = d.get("next"), None
+        return out
+
+    def dokument_patchen(self, doc_id, body: dict) -> dict:
+        if not body or not set(body) <= PATCH_ERLAUBT:
+            raise ValueError(f"PATCH nur für {sorted(PATCH_ERLAUBT)} erlaubt, nicht {sorted(body)}")
+        return self._request("PATCH", f"{self.base}/api/documents/{doc_id}/", json=body).json()
+
+    def korrespondent_anlegen(self, name: str) -> dict:
+        # matching_algorithm 0 = keine automatische Zuordnung künftiger Dokumente
+        return self._request("POST", f"{self.base}/api/correspondents/", json={"name": name, "matching_algorithm": 0}).json()
