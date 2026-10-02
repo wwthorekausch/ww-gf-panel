@@ -29,7 +29,7 @@ python cockpit.py sevdesk-mahnwesen sync
 python cockpit.py sevdesk-mahnwesen mahnungen
 ```
 
-`cockpit.py` sucht im angegebenen Modul-Ordner nach `cli.py` und leitet Befehl+Argumente weiter. Neues Modul hinzufügen = neuer Unterordner mit eigener `cli.py` und `CLAUDE.md`, kein Änderung an `cockpit.py` nötig.
+`python3 cockpit.py` ohne Argumente = Job-Menü (Liste `JOBS` in `cockpit.py`, schreibende Jobs mit Rückfrage); `cockpit.py job <name>` startet direkt. `cockpit.py` sucht im angegebenen Modul-Ordner nach `cli.py` und leitet Befehl+Argumente weiter. Neues Modul hinzufügen = neuer Unterordner mit eigener `cli.py` und `CLAUDE.md`, kein Änderung an `cockpit.py` nötig.
 
 ## Config / Secrets
 
