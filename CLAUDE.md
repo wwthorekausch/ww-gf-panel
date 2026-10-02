@@ -16,6 +16,7 @@ Sammlung lokaler Automatisierungs-Skripte für Geschäftsführungs-Tätigkeiten 
 
 - [sevdesk-mahnwesen](sevdesk-mahnwesen/CLAUDE.md) — Übersicht offener Rechnungen, Mahnstufen, Ausblenden nicht relevanter Rechnungen (sevDesk API)
 - [sevdesk-belege](sevdesk-belege/CLAUDE.md) — Belege prüfen/korrigieren, Zahlungen zuordnen, Standardbuchungen (sevDesk API)
+- [paperless](paperless/CLAUDE.md) — Paperless-Duplikate finden und löschen
 - [n8n](n8n/CLAUDE.md) — n8n-Import-Workflows (Gmail GMI-Label → Paperless)
 - [bwa](bwa/CLAUDE.md) — monatliche BWA-Daten (JSON) + Auswertungen zum Monatsvergleich
 
@@ -37,6 +38,10 @@ Jedes Modul verwaltet eigene `config.ini` innerhalb seines Ordners (gitignored, 
 ## Repo
 
 `git@github.com:wwthorekausch/ww-gf-panel.git` — nur Tooling. Daten, Ergebnisse, PDFs, `config.ini`, `*.db`, `TODO.md`, generierte `standardbuchungen.json` sind per `.gitignore` ausgeschlossen. Testdaten/Fixtures immer anonymisiert (keine echten Namen, Beträge, IDs). Vor jedem Push `git diff --cached --name-only` prüfen.
+
+## Harte Regeln Paperless
+
+- Löschen nur inhaltsgleicher Duplikate über `paperless loeschen` nach Einzel-Freigabe „j“; ältestes bleibt; Token nur aus Keychain `ww-gf-cockpit-paperless`.
 
 ## Harte Regeln sevDesk
 
