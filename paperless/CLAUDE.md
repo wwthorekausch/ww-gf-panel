@@ -14,6 +14,8 @@ Duplikat-Prüfung und -Löschung in Paperless-ngx.
     python3 cli.py anreichern [--dry-run] [--limit N]  # leere Felder/Korrespondent/Speicherpfad aus sevDesk/GMI, fehlt_in_sevdesk.csv
     python3 cli.py korrigieren [--dry-run] # Abweichungen zur Quelle je Dokument nach "j" überschreiben
 
+OCR hat Vorrang: Dokumente mit Tag „KI-geprüft“ (Gemini-Workflow, siehe `n8n/`) werden von `korrigieren` nie aus sevDesk/GMI überschrieben. Weicht deren Firma vom sevDesk-Eingangsbeleg ab, fragt `korrigieren` „sevDesk aktualisieren?“ → nach „j“ `supplierName` am Beleg setzen + nachlesen.
+
 ## Regeln
 
 - Duplikat = gleicher OCR-Text (Leerraum/Groß-Klein normalisiert, ≥ 50 Zeichen). Ohne OCR-Text nie Duplikat.

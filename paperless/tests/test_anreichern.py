@@ -233,3 +233,16 @@ def test_geld_waehrung():
 
 def test_korrespondent_ohne_leerzeichen_gleich():
     assert a.korrespondent_id("DigitalOcean", [{"id": 11, "name": "Digital Ocean"}]) == 11
+
+
+def test_firma_fuer_sevdesk_ocr_weicht_ab():
+    doc = {"custom_fields": [{"field": 3, "value": "welltec GmbH"}]}
+    assert a.firma_fuer_sevdesk(doc, a.Quelle(firma="Holstein Kiel", sevdesk_id="9"), CF) == "welltec GmbH"
+
+
+def test_firma_fuer_sevdesk_aehnlich_oder_ohne_beleg_none():
+    doc = {"custom_fields": [{"field": 3, "value": "PlentyONE GmbH"}]}
+    assert a.firma_fuer_sevdesk(doc, a.Quelle(firma="plentymarkets", sevdesk_id="9"), CF) is None
+    doc = {"custom_fields": [{"field": 3, "value": "welltec GmbH"}]}
+    assert a.firma_fuer_sevdesk(doc, a.Quelle(firma="Holstein Kiel"), CF) is None
+    assert a.firma_fuer_sevdesk({"custom_fields": []}, a.Quelle(firma="Holstein Kiel", sevdesk_id="9"), CF) is None

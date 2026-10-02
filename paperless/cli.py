@@ -153,6 +153,16 @@ def _lesbar(body, doc, cf_namen, opt_labels, korr_namen):
     return "; ".join(teile)
 
 
+def _sevdesk_schreiber():
+    """Schreiber aus sevdesk-belege (Guards + Protokoll in dessen data.db); _quellen() hat den Pfad gesetzt."""
+    import actions
+    import db
+    from shared.sevdesk_client import SevdeskClient
+    conn = db.connect(MODULE_DIR.parent / "sevdesk-belege")
+    return actions.Schreiber(SevdeskClient(keychain_token("ww-gf-cockpit-sevdesk")), conn,
+                             db.run_start(conn, False), False, 0)
+
+
 def cmd_korrigieren(args) -> int:
     """Abweichungen (falsche Werte/Korrespondenten) nach Rückfrage je Dokument überschreiben."""
     c = client()
@@ -169,26 +179,49 @@ def cmd_korrigieren(args) -> int:
     rechnungen, belege, gmi_docs = _quellen()
     rechnung_typen = {typen.get("Ausgangsrechnung"), typen.get("Eingangsrechnung"), typen.get("Zahlungsbeleg")} - {None}
     zb_id = typen.get("Zahlungsbeleg")
+    ki_tag = {t["name"]: t["id"] for t in c.alle("tags")}.get("KI-geprüft")
+    beleg_datum = {b["id"]: b["datum"] for b in belege}
     kandidaten = []
     for doc in c.dokumente():
         if doc.get("document_type") not in rechnung_typen:
             continue
         quelle, _ = _bestimme(doc, typen, rechnungen, belege, gmi_docs)
-        neu_name, kid = None, None
-        if quelle and anreichern.korrespondent_tauglich(quelle.firma):
-            kid = anreichern.korrespondent_id(quelle.firma, korrespondenten)
-            if kid is None:
-                neu_name, kid = quelle.firma, f"(neu: {quelle.firma})"
-        body = anreichern.korrektur(doc, quelle, cf, optionen, kid, {k["id"]: k["name"] for k in korrespondenten}) or {}
+        neu_name, kid, body, sev_firma = None, None, {}, None
+        if ki_tag in (doc.get("tags") or []):        # OCR-geprüft: Paperless gewinnt, Abweichung ggf. nach sevDesk
+            if doc.get("document_type") != typen.get("Ausgangsrechnung"):
+                sev_firma = anreichern.firma_fuer_sevdesk(doc, quelle, cf)
+        else:
+            if quelle and anreichern.korrespondent_tauglich(quelle.firma):
+                kid = anreichern.korrespondent_id(quelle.firma, korrespondenten)
+                if kid is None:
+                    neu_name, kid = quelle.firma, f"(neu: {quelle.firma})"
+            body = anreichern.korrektur(doc, quelle, cf, optionen, kid, {k["id"]: k["name"] for k in korrespondenten}) or {}
         if anreichern.ist_zahlungsbeleg(doc) and doc.get("document_type") == typen.get("Eingangsrechnung"):
             body["document_type"] = zb_id or "(neu: Zahlungsbeleg)"
-        if body:
-            kandidaten.append((doc, body, neu_name))
+        if body or sev_firma:
+            kandidaten.append((doc, body, neu_name, quelle, sev_firma))
     korr_namen = {k["id"]: k["name"] for k in korrespondenten}
     print(f"{len(kandidaten)} Dokumente mit Abweichungen. j = übernehmen, Enter = überspringen, q = Ende\n")
-    geaendert = 0
-    for doc, body, neu_name in kandidaten:
-        print(f"#{doc['id']:<5} {(doc.get('title') or '')[:45]}\n   {_lesbar(body, doc, cf_namen, opt_labels, korr_namen)}")
+    geaendert, schreiber = 0, None
+    for doc, body, neu_name, quelle, sev_firma in kandidaten:
+        print(f"#{doc['id']:<5} {(doc.get('title') or '')[:45]}")
+        if sev_firma:
+            print(f"   sevDesk-Beleg {quelle.sevdesk_id}: Lieferant {quelle.firma!s} → {sev_firma} (OCR)")
+            if not args.dry_run:
+                antwort = input("   sevDesk aktualisieren? [j/Enter/q] ").strip().lower()
+                if antwort == "q":
+                    break
+                if antwort == "j":
+                    schreiber = schreiber or _sevdesk_schreiber()
+                    try:
+                        schreiber.lieferant_setzen(quelle.sevdesk_id, beleg_datum.get(quelle.sevdesk_id), sev_firma)
+                    except Exception as e:          # Guard/Fehler/Nachlesen: Lauf stoppen, Zustand prüfen
+                        print(f"   ABBRUCH sevDesk-Beleg {quelle.sevdesk_id}: {e}")
+                        return 1
+                    print("   sevDesk aktualisiert")
+        if not body:
+            continue
+        print(f"   {_lesbar(body, doc, cf_namen, opt_labels, korr_namen)}")
         if args.dry_run:
             continue
         antwort = input("   übernehmen? [j/Enter/q] ").strip().lower()

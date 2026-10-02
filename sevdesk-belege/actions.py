@@ -10,6 +10,7 @@ ERLAUBT = [(m, re.compile(p)) for m, p in (
     ("post", r"^Voucher/Factory/saveVoucher$"),
     ("put", r"^Voucher/\d+/bookAmount$"),
     ("put", r"^Invoice/\d+/bookAmount$"),
+    ("put", r"^Voucher/\d+$"),             # nur supplierName, über lieferant_setzen
     ("delete", r"^Voucher/\d+$"),          # nur über loesche_duplikat (Entwurf-Duplikate)
     ("upload", r"^Voucher/Factory/uploadTempFile$"),   # nur über gmi_hochladen
 )]
@@ -120,6 +121,8 @@ class Schreiber:
     def _schreibe(self, methode: str, pfad: str, body: dict, objekt_typ: str, objekt_id: str, aktion: str):
         if not any(m == methode and p.match(pfad) for m, p in ERLAUBT):
             raise RegelVerletzung(f"Schreibpfad nicht erlaubt: {pfad}")
+        if methode == "put" and re.match(r"^Voucher/\d+$", pfad) and set(body) != {"supplierName"}:
+            raise RegelVerletzung(f"Voucher-Update nur für supplierName: {sorted(body)}")
         log = body if methode != "upload" else {"dateiname": body["dateiname"], "bytes": len(body["inhalt"])}
         aid = db.log_geplant(self.conn, self.run_id, objekt_typ, objekt_id, aktion, log, self.dry_run)
         if self.dry_run:
@@ -239,6 +242,21 @@ class Schreiber:
             raise RegelVerletzung(f"Beleg {dup.id} ist kein löschbares Duplikat von {behalten.id}")
         self._pruefe_datum(dup.datum)
         self._schreibe("delete", f"Voucher/{dup.id}", {}, "Voucher", dup.id, f"duplikat löschen (behalten {behalten.id})")
+
+    def lieferant_setzen(self, beleg_id: str, datum, firma: str) -> None:
+        """Lieferantenname eines Belegs (Eingangsbeleg) setzen, nachlesen. Nur nach Einzel-Freigabe."""
+        if not (firma or "").strip():
+            raise RegelVerletzung(f"Beleg {beleg_id}: leerer Lieferantenname")
+        self._pruefe_datum(datum)
+        self._schreibe("put", f"Voucher/{beleg_id}", {"supplierName": firma}, "Voucher", beleg_id, f"lieferant -> {firma}")
+        if self.dry_run:
+            return
+        try:
+            ist = self.client.get(f"Voucher/{beleg_id}")["objects"][0].get("supplierName")
+        except Exception as e:
+            raise AbbruchNachSchreiben(f"Nachlesen fehlgeschlagen (Beleg {beleg_id}): {e}") from e
+        if ist != firma:
+            raise AbbruchNachSchreiben(f"Nachlesen weicht ab (Beleg {beleg_id}): {ist!r}")
 
     def usd_auf_eur(self, beleg: Beleg, umsatz: Umsatz) -> None:
         """USD-Beleg auf EUR = Bankbetrag umstellen, nachlesen, zuordnen. Nur per CLI-Befehl nach Einzel-Freigabe."""

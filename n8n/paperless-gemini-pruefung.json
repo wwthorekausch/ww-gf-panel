@@ -89,7 +89,7 @@
     {
       "parameters": {
         "promptType": "define",
-        "text": "=Du prüfst eine Rechnung aus Paperless. Lies den OCR-Text und gib die Rechnungsdaten zurück.\nRegeln:\n- Nur Werte, die eindeutig im Text stehen. Sonst Feld weglassen. Nichts raten.\n- rechnungsnummer: die Rechnungs-/Belegnummer (nicht Kunden-, Bestell-, Konto- oder Steuernummer, keine Postleitzahl).\n- firma: Rechnungssteller (bei Eingangsrechnung) bzw. Rechnungsempfänger (bei Ausgangsrechnung). Web Wikinger GmbH ist die eigene Firma.\n- brutto/netto: Gesamtbeträge als Zahl mit Punkt (z.B. 162.59). waehrung: ISO-Code (EUR, USD).\n- zahlart: genau einer von Rechnung, Vorkasse, Kreditkarte, Abo, Lastschrift, Paypal (sonst weglassen).\n- rechnungstyp: Rechnung, Gutschrift oder Stornorechnung.\n- ist_zahlungsbeleg: true, wenn es nur eine Zahlungsbestätigung/Receipt ist und keine Rechnung.\n- sicherheit: 0 bis 1, wie sicher du insgesamt bist. pruefhinweis: ein Satz, was auffällt (z.B. Netto weicht vom eingetragenen Wert ab).\n\nDokumenttyp: {{ $json.document_type === 3 ? 'Ausgangsrechnung' : 'Eingangsrechnung' }}\nTitel: {{ $json.title }}\nBisher eingetragene Felder: {{ JSON.stringify($json.custom_fields) }}\n\nOCR-Text:\n{{ ($json.content || '').slice(0, 12000) }}",
+        "text": "=Du prüfst eine Rechnung aus Paperless. Lies den OCR-Text und gib die Rechnungsdaten zurück.\nRegeln:\n- Nur Werte, die eindeutig im Text stehen. Sonst Feld weglassen. Nichts raten.\n- rechnungsnummer: die Rechnungs-/Belegnummer (nicht Kunden-, Bestell-, Konto- oder Steuernummer, keine Postleitzahl).\n- firma: Rechnungssteller (bei Eingangsrechnung) bzw. Rechnungsempfänger (bei Ausgangsrechnung). Web Wikinger GmbH ist die eigene Firma.\n- brutto/netto: Gesamtbeträge als Zahl mit Punkt (z.B. 162.59). waehrung: ISO-Code (EUR, USD).\n- zahlart: WIE der Betrag bezahlt wird/wurde – nicht, dass es eine Rechnung ist. Ein Zahlungsziel (\"due\", \"fällig\") allein heißt NICHT Rechnung. Genau einer von:\n  - Kreditkarte: Karte genannt (Kreditkarte, Visa, Mastercard, Amex, Kartenendziffern, \"charged to your card\") ODER Online-Dienst/Software mit \"Pay online\"/Zahlungslink und ohne Bankverbindung zum Überweisen (typisch Stripe-Rechnungen und Receipts).\n  - Lastschrift: SEPA-Lastschrift, Einzug, \"wird von Ihrem Konto abgebucht\", Mandatsreferenz, Gläubiger-ID.\n  - Paypal: Zahlung über PayPal genannt.\n  - Vorkasse: Zahlung vor Lieferung/Leistung verlangt (Vorkasse, Proforma, \"zahlbar vor Versand\").\n  - Rechnung: Überweisung auf die Bankverbindung des Ausstellers (IBAN/Bankverbindung + Zahlungsziel oder \"bitte überweisen\"), kein Hinweis auf Karte, Einzug oder PayPal. Bei Ausgangsrechnungen der Normalfall.\n  - Abo: nur wenn wiederkehrende Abbuchung genannt ist, aber keine der obigen Zahlungsarten erkennbar.\n  Konkretes Zahlungsmittel schlägt Zahlungsziel. Unklar: weglassen. Nenne im pruefhinweis kurz, woran du die Zahlart erkannt hast.\n- rechnungstyp: Rechnung, Gutschrift oder Stornorechnung.\n- ist_zahlungsbeleg: true, wenn es nur eine Zahlungsbestätigung/Receipt ist und keine Rechnung.\n- sicherheit: 0 bis 1, wie sicher du insgesamt bist. pruefhinweis: ein Satz, was auffällt (z.B. Netto weicht vom eingetragenen Wert ab).\n\nDokumenttyp: {{ $json.document_type === 3 ? 'Ausgangsrechnung' : 'Eingangsrechnung' }}\nTitel: {{ $json.title }}\nBisher eingetragene Felder: {{ JSON.stringify($json.custom_fields) }}\n\nOCR-Text:\n{{ ($json.content || '').slice(0, 12000) }}",
         "hasOutputParser": true,
         "options": {
           "systemMessage": "Du bist Buchhaltungsprüfer. Antworte ausschließlich im vorgegebenen JSON-Schema."
@@ -142,14 +142,14 @@
     },
     {
       "parameters": {
-        "jsCode": "// Paperless-IDs (Instanz web-wikinger): Custom Fields und Select-Optionen\nconst CF = { rechnungsnummer: 1, zahlart: 2, firma: 3, brutto: 6, netto: 7, rechnungstyp: 8 };\nconst ZAHLART = { Rechnung: '9fyH21EOJWI8l7GF', Vorkasse: 'SlDzw9DHxVOmDnJD', Kreditkarte: 'hMSLnG9gG8elm97q',\n                  Abo: 'L9U1lgDZsXvBnXqX', Lastschrift: 'vSSit6JyEqdBW4PJ', Paypal: 'jzEwRWEh7YPnA22y' };\nconst TYP = { Rechnung: '2b3JjQz0283yqzpB', Gutschrift: 'aS36nmVB2iRUY9U2', Stornorechnung: 'zTKbB4kUcRU95nKR' };\nconst TAG_GEPRUEFT = Number('18');   // ID des Tags \"KI-geprüft\" eintragen\nif (!TAG_GEPRUEFT) throw new Error('Tag-ID \"KI-geprüft\" fehlt: KI_GEPRUEFT_TAG_ID hier und im Paperless-Abfrageknoten durch Zahl ersetzen');\nconst MIN_SICHERHEIT = 0.8;                          // darunter: nur Tag + Notiz, keine Feldänderung\n\nconst out = [];\nfor (const [i, item] of $input.all().entries()) {\n  const doc = $('Dokumente einzeln').all()[i].json;\n  const ki = item.json.output || {};\n  const felder = Object.fromEntries((doc.custom_fields || []).map(f => [f.field, f.value]));\n  const vorher = { ...felder };\n  const geld = (b) => (b == null ? null : `${(ki.waehrung || 'EUR').toUpperCase()}${Number(b).toFixed(2)}`);\n  const soll = {\n    [CF.rechnungsnummer]: ki.rechnungsnummer || null,\n    [CF.firma]: ki.firma || null,\n    [CF.brutto]: geld(ki.brutto),\n    [CF.netto]: geld(ki.netto),\n    [CF.zahlart]: ZAHLART[ki.zahlart] || null,\n    [CF.rechnungstyp]: TYP[ki.rechnungstyp] || null,\n  };\n  const aenderungen = [];\n  if ((ki.sicherheit ?? 0) >= MIN_SICHERHEIT) {\n    for (const [fid, wert] of Object.entries(soll)) {\n      if (wert != null && felder[fid] !== wert) {          // SevdeskID/Kundennummer werden nie angefasst\n        aenderungen.push(`Feld ${fid}: ${felder[fid] ?? '–'} → ${wert}`);\n        felder[fid] = wert;\n      }\n    }\n  }\n  const tags = [...new Set([...(doc.tags || []), TAG_GEPRUEFT])];\n  out.push({ json: {\n    id: doc.id,\n    patch: { custom_fields: Object.entries(felder).map(([field, value]) => ({ field: Number(field), value })), tags },\n    notiz: `KI-Prüfung (Gemini, Sicherheit ${ki.sicherheit ?? '?'}): ${ki.pruefhinweis || ''}` +\n           (aenderungen.length ? `\\nGeändert: ${aenderungen.join('; ')}` : '\\nKeine Feldänderung.') +\n           (ki.ist_zahlungsbeleg ? '\\nHinweis: Zahlungsbeleg, keine Rechnung.' : '') +\n           `\\nVorher: ${JSON.stringify(vorher)}`,\n  }});\n}\nreturn out;"
+        "jsCode": "// Paperless-IDs (Instanz web-wikinger): Custom Fields und Select-Optionen\nconst CF = { rechnungsnummer: 1, zahlart: 2, firma: 3, brutto: 6, netto: 7, rechnungstyp: 8 };\nconst ZAHLART = { Rechnung: '9fyH21EOJWI8l7GF', Vorkasse: 'SlDzw9DHxVOmDnJD', Kreditkarte: 'hMSLnG9gG8elm97q',\n                  Abo: 'L9U1lgDZsXvBnXqX', Lastschrift: 'vSSit6JyEqdBW4PJ', Paypal: 'jzEwRWEh7YPnA22y' };\nconst TYP = { Rechnung: '2b3JjQz0283yqzpB', Gutschrift: 'aS36nmVB2iRUY9U2', Stornorechnung: 'zTKbB4kUcRU95nKR' };\nconst TAG_GEPRUEFT = Number('18');   // ID des Tags \"KI-geprüft\" eintragen\nif (!TAG_GEPRUEFT) throw new Error('Tag-ID \"KI-geprüft\" fehlt: KI_GEPRUEFT_TAG_ID hier und im Paperless-Abfrageknoten durch Zahl ersetzen');\nconst MIN_SICHERHEIT = 0.8;                          // darunter: nur Tag + Notiz, keine Feldänderung\nconst KORR = $('Paperless: Korrespondenten').first().json.results || [];\nconst norm = (t) => (t || '').toLowerCase().replace(/[^a-z0-9äöüß]+/g, ' ').trim();\nconst kompakt = (t) => norm(t).replace(/ /g, '');\nconst aehnlich = (a, b) => {                          // wie paperless/anreichern.py: aehnlich()\n  const x = norm(a), y = norm(b);\n  if (!x || !y) return false;\n  if (x.includes(y) || y.includes(x)) return true;\n  const w1 = x.split(' ')[0], w2 = y.split(' ')[0];\n  return w1.length >= 6 && w2.length >= 6 && w1.slice(0, 6) === w2.slice(0, 6);\n};\n\nconst out = [];\nfor (const [i, item] of $('Gemini-Prüfer').all().entries()) {\n  const doc = $('Dokumente einzeln').all()[i].json;\n  const ki = item.json.output || {};\n  const felder = Object.fromEntries((doc.custom_fields || []).map(f => [f.field, f.value]));\n  const vorher = { ...felder };\n  const geld = (b) => (b == null ? null : `${(ki.waehrung || 'EUR').toUpperCase()}${Number(b).toFixed(2)}`);\n  const soll = {\n    [CF.rechnungsnummer]: ki.rechnungsnummer || null,\n    [CF.firma]: ki.firma || null,\n    [CF.brutto]: geld(ki.brutto),\n    [CF.netto]: geld(ki.netto),\n    [CF.zahlart]: ZAHLART[ki.zahlart] || null,\n    [CF.rechnungstyp]: TYP[ki.rechnungstyp] || null,\n  };\n  const aenderungen = [];\n  let korrespondent, korrespondentNeu = '';\n  if ((ki.sicherheit ?? 0) >= MIN_SICHERHEIT && ki.firma) {   // OCR-Firma hat Vorrang vor bisherigem Korrespondenten\n    const aktuell = KORR.find(k => k.id === doc.correspondent);\n    if (!aktuell || !aehnlich(aktuell.name, ki.firma)) {\n      const aehnliche = KORR.filter(k => aehnlich(k.name, ki.firma));\n      const treffer = KORR.find(k => kompakt(k.name) === kompakt(ki.firma)) || (aehnliche.length === 1 ? aehnliche[0] : null);\n      if (treffer) korrespondent = treffer.id; else korrespondentNeu = ki.firma;\n      aenderungen.push(`Korrespondent: ${aktuell?.name ?? '–'} → ${treffer ? treffer.name : ki.firma + ' (neu)'}`);\n    }\n  }\n  if ((ki.sicherheit ?? 0) >= MIN_SICHERHEIT) {\n    for (const [fid, wert] of Object.entries(soll)) {\n      if (wert != null && felder[fid] !== wert) {          // SevdeskID/Kundennummer werden nie angefasst\n        aenderungen.push(`Feld ${fid}: ${felder[fid] ?? '–'} → ${wert}`);\n        felder[fid] = wert;\n      }\n    }\n  }\n  const tags = [...new Set([...(doc.tags || []), TAG_GEPRUEFT])];\n  out.push({ json: {\n    id: doc.id,\n    patch: { custom_fields: Object.entries(felder).map(([field, value]) => ({ field: Number(field), value })), tags,\n             ...(korrespondent ? { correspondent: korrespondent } : {}) },\n    korrespondent_neu: korrespondentNeu,\n    notiz: `KI-Prüfung (Gemini, Sicherheit ${ki.sicherheit ?? '?'}): ${ki.pruefhinweis || ''}` +\n           (aenderungen.length ? `\\nGeändert: ${aenderungen.join('; ')}` : '\\nKeine Feldänderung.') +\n           (ki.ist_zahlungsbeleg ? '\\nHinweis: Zahlungsbeleg, keine Rechnung.' : '') +\n           `\\nVorher: ${JSON.stringify(vorher)}`,\n  }});\n}\nreturn out;"
       },
       "id": "b7",
       "name": "Änderungen + Tag bauen",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        880,
+        1100,
         0
       ]
     },
@@ -169,7 +169,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1100,
+        1980,
         0
       ],
       "credentials": {
@@ -195,7 +195,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1320,
+        2200,
         0
       ],
       "credentials": {
@@ -204,6 +204,115 @@
           "name": "Paperless Token"
         }
       }
+    },
+    {
+      "parameters": {
+        "url": "https://paperless-dm4gvs1uhywditsblqku0t4j.wikinger.io/api/correspondents/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {},
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "page_size",
+              "value": "1000"
+            },
+            {
+              "name": "fields",
+              "value": "id,name"
+            }
+          ]
+        }
+      },
+      "id": "b10",
+      "name": "Paperless: Korrespondenten",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "PAPERLESS_CREDENTIAL_ID",
+          "name": "Paperless Token"
+        }
+      },
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "k1",
+              "leftValue": "={{ $json.korrespondent_neu }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b11",
+      "name": "Korrespondent neu?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://paperless-dm4gvs1uhywditsblqku0t4j.wikinger.io/api/correspondents/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {},
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: $json.korrespondent_neu }) }}"
+      },
+      "id": "b12",
+      "name": "Paperless: Korrespondent anlegen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        -160
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "PAPERLESS_CREDENTIAL_ID",
+          "name": "Paperless Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// neu angelegten Korrespondenten in den PATCH übernehmen\nconst src = $('Änderungen + Tag bauen').item.json;\nreturn { json: { ...src, patch: { ...src.patch, correspondent: $json.id } } };"
+      },
+      "id": "b13",
+      "name": "Korrespondent eintragen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        -160
+      ]
     }
   ],
   "connections": {
@@ -262,28 +371,24 @@
         ]
       ]
     },
-    "Gemini-Prüfer": {
-      "main": [
-        [
-          {
-            "node": "Änderungen + Tag bauen",
-            "type": "main",
-            "index": 0
-          }
-        ]
+    "Gemini-Prüfer": [
+      [
+        {
+          "node": "Paperless: Korrespondenten",
+          "type": "main",
+          "index": 0
+        }
       ]
-    },
-    "Änderungen + Tag bauen": {
-      "main": [
-        [
-          {
-            "node": "Paperless: Felder + Tag setzen",
-            "type": "main",
-            "index": 0
-          }
-        ]
+    ],
+    "Änderungen + Tag bauen": [
+      [
+        {
+          "node": "Korrespondent neu?",
+          "type": "main",
+          "index": 0
+        }
       ]
-    },
+    ],
     "Paperless: Felder + Tag setzen": {
       "main": [
         [
@@ -294,7 +399,52 @@
           }
         ]
       ]
-    }
+    },
+    "Paperless: Korrespondenten": [
+      [
+        {
+          "node": "Änderungen + Tag bauen",
+          "type": "main",
+          "index": 0
+        }
+      ]
+    ],
+    "Korrespondent neu?": {
+      "main": [
+        [
+          {
+            "node": "Paperless: Korrespondent anlegen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Paperless: Felder + Tag setzen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Paperless: Korrespondent anlegen": [
+      [
+        {
+          "node": "Korrespondent eintragen",
+          "type": "main",
+          "index": 0
+        }
+      ]
+    ],
+    "Korrespondent eintragen": [
+      [
+        {
+          "node": "Paperless: Felder + Tag setzen",
+          "type": "main",
+          "index": 0
+        }
+      ]
+    ]
   },
   "settings": {
     "executionOrder": "v1"

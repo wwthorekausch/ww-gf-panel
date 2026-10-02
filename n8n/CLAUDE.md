@@ -24,14 +24,15 @@ Bekannte Grenze: Mails mit Anhang, aber ohne PDF, bekommen kein Label und werden
 
 ## paperless-gemini-pruefung.json
 
-Stündlich bis zu 10 Rechnungen ab 01.01.2025 (Typ Eingangs-/Ausgangsrechnung) **ohne** Tag „KI-geprüft“ aus Paperless → Gemini 2.5 Flash (Agent, JSON-Schema) liest OCR-Text → Code-Knoten baut Änderungen → `PATCH` Custom Fields + Tag „KI-geprüft“ → Prüfnotiz am Dokument (Hinweis, Änderungen, Vorher-Werte).
+Stündlich bis zu 10 Rechnungen ab 01.01.2025 (Typ Eingangs-/Ausgangsrechnung) **ohne** Tag „KI-geprüft“ aus Paperless → Gemini 2.5 Flash (Agent, JSON-Schema) liest OCR-Text → Korrespondenten laden (einmal je Lauf) → Code-Knoten baut Änderungen → ggf. Korrespondent anlegen → `PATCH` Custom Fields + Korrespondent + Tag „KI-geprüft“ → Prüfnotiz am Dokument (Hinweis, Änderungen, Vorher-Werte).
 
-- Felder werden nur bei Sicherheit ≥ 0,8 geändert; sonst nur Tag + Notiz. SevdeskID/Kundennummer/Korrespondent werden nie angefasst.
+- OCR hat Vorrang (Entscheidung 2026-10-02): Felder und Korrespondent werden bei Sicherheit ≥ 0,8 aus dem OCR-Text gesetzt; sonst nur Tag + Notiz. SevdeskID/Kundennummer werden nie angefasst.
+- Korrespondent = Firma aus OCR: bleibt, wenn der aktuelle ähnlich ist (Regel wie `paperless/anreichern.py` `aehnlich`); sonst exakter Namenstreffer, sonst genau ein ähnlicher, sonst neu anlegen. Grenze: dieselbe neue Firma zweimal im selben Lauf → zweites Anlegen schlägt fehl (nächster Lauf greift den Treffer).
 - Vorher-Werte stehen in der Notiz → manuell rückgängig machbar.
 
 Nach dem Import:
 1. Tag **„KI-geprüft“** = ID `18` (in Knoten „Paperless: ungeprüfte Rechnungen“ `tags__id__none` und „Änderungen + Tag bauen“ eingetragen).
-2. Credentials: Header Auth „Paperless Token“ an den drei HTTP-Knoten, „Google Gemini (PaLM) API“ am Modell-Knoten.
+2. Credentials: Header Auth „Paperless Token“ an den fünf HTTP-Knoten, „Google Gemini (PaLM) API“ am Modell-Knoten.
 3. Erst manuell mit 1–2 Dokumenten testen (page_size auf 1), Notizen prüfen, dann aktivieren.
 
 ## Selflearning

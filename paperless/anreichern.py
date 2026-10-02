@@ -148,6 +148,14 @@ def plan(doc: dict, quelle: Quelle | None, cf: dict[str, int], optionen: dict, k
     return body or None
 
 
+def firma_fuer_sevdesk(doc: dict, quelle: Quelle | None, cf: dict[str, int]) -> str | None:
+    """Firma aus Paperless (OCR-geprüft, hat Vorrang), wenn sie vom sevDesk-Beleg abweicht — sonst None."""
+    firma = {f["field"]: f.get("value") for f in doc.get("custom_fields") or []}.get(cf.get("Firma"))
+    if not quelle or not quelle.sevdesk_id or not korrespondent_tauglich(firma):
+        return None
+    return None if quelle.firma and aehnlich(firma, quelle.firma) else firma
+
+
 KLAERBAR = ("Rechnungsnummer", "Brutto", "Netto", "Firma", "SevdeskID", "Rechnungstyp", "Zahlart")
 
 

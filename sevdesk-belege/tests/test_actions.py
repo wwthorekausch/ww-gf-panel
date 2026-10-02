@@ -117,7 +117,7 @@ def test_guard_datum_vor_stichtag():
 
 def test_guard_pfad_whitelist():
     s, _ = schreiber(FakeClient())
-    for pfad in ("Invoice/1/changeStatus", "Invoice/1", "Voucher/5", "CheckAccountTransaction/77"):
+    for pfad in ("Invoice/1/changeStatus", "Invoice/1", "Voucher/5/changeStatus", "CheckAccountTransaction/77"):
         with pytest.raises(actions.RegelVerletzung):
             s._schreibe("put", pfad, {}, "X", "1", "test")
 
@@ -499,3 +499,31 @@ def test_gmi_taggen_vor_stichtag_verweigert():
     s.gmi = FakeGmi()
     with pytest.raises(actions.RegelVerletzung):
         s.gmi_taggen(d)
+
+
+def test_lieferant_setzen_put_und_nachlesen():
+    c = FakeClient()
+    c.v["supplierName"] = "welltec GmbH"
+    s, _ = schreiber(c)
+    s.lieferant_setzen("5", date(2026, 8, 11), "welltec GmbH")
+    assert c.calls == [("PUT", "Voucher/5"), ("GET", "Voucher/5")]
+
+
+def test_lieferant_setzen_nachlesen_abweichend_abbruch():
+    c = FakeClient()
+    c.v["supplierName"] = "Holstein Kiel"
+    s, _ = schreiber(c)
+    with pytest.raises(actions.Abbruch, match="Nachlesen"):
+        s.lieferant_setzen("5", date(2026, 8, 11), "welltec GmbH")
+
+
+def test_lieferant_setzen_guards():
+    c = FakeClient()
+    s, _ = schreiber(c)
+    with pytest.raises(actions.RegelVerletzung):
+        s.lieferant_setzen("5", date(2024, 12, 31), "welltec GmbH")
+    with pytest.raises(actions.RegelVerletzung):
+        s.lieferant_setzen("5", date(2026, 8, 11), "  ")
+    s, _ = schreiber(c, dry_run=True)
+    s.lieferant_setzen("5", date(2026, 8, 11), "welltec GmbH")
+    assert schreibpfade(c) == []
