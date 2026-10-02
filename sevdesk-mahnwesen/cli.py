@@ -232,7 +232,7 @@ def cmd_mahngebuehr_erlassen(args, config) -> None:
     """Offene Mahngebühren bezahlter Rechnungen per Minderung (bookAmount 0 €, Typ O) abschließen. Kein Geldfluss."""
     client = build_client(config)
     kandidaten = []
-    for ma in _alle(client, {"invoiceType": "MA", "status": 750}):
+    for ma in [m for st in (750, 500) for m in _alle(client, {"invoiceType": "MA", "status": st})]:
         if ma.get("invoiceType") != "MA":
             continue
         orig = client.get(f"Invoice/{ma['origin']['id']}")["objects"][0]

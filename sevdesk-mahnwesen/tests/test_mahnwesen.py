@@ -184,3 +184,11 @@ def test_gebuehr_erlassbar_vor_2025_nur_mit_freigabe():
     assert m.gebuehr_erlassbar(alt, {"status": "1000"})[0] is False
     assert m.gebuehr_erlassbar(alt, {"status": "1000"}, auch_vor_2025=True) == (True, "ok")
     assert m.gebuehr_erlassbar({**alt, "paidAmount": "5"}, {"status": "1000"}, auch_vor_2025=True)[0] is False
+
+
+def test_versendete_mahnung_zu_erledigter_rechnung_abschliessbar():
+    ma_ = {"invoiceType": "MA", "status": "500", "sumGross": "0", "paidAmount": "0", "reminderCharge": "0",
+           "invoiceDate": "2026-07-06T00:00:00+02:00"}
+    assert m.gebuehr_erlassbar(ma_, {"status": "1000"}) == (True, "ok")
+    assert m.gebuehr_erlassbar(ma_, {"status": "200"})[0] is False      # Rechnung noch offen -> Mahnung bleibt
+    assert m.gebuehr_erlassbar({**ma_, "status": "100"}, {"status": "1000"})[0] is False   # Entwurf nicht

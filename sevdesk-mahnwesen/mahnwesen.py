@@ -211,8 +211,8 @@ def gebuehr_erlassbar(ma: dict, original: dict, auch_vor_2025: bool = False) -> 
     """Offene Mahngebühr einer sonst bezahlten Rechnung per Minderung (bookAmount 0 €, Typ O) abschließen?"""
     if ma.get("invoiceType") != "MA":
         return False, "keine Mahnung"
-    if str(ma.get("status")) != "750":
-        return False, f"Mahnung Status {ma.get('status')} (nicht teilbezahlt)"
+    if str(ma.get("status")) not in ("500", "750"):
+        return False, f"Mahnung Status {ma.get('status')} (nicht versendet/teilbezahlt)"
     if not auch_vor_2025 and (ma.get("invoiceDate") or "")[:10] < STICHTAG.isoformat():
         return False, "vor 2025"
     if str(original.get("status")) != "1000":
