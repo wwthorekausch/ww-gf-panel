@@ -45,6 +45,10 @@ Typischer Ablauf:
 
 Jeder Modul-Befehl geht weiterhin direkt: `python3 cockpit.py <modul> <befehl> [args]`, z.B. `python3 cockpit.py sevdesk-belege usd-auf-eur --beleg … --umsatz …`.
 
+## Alfred
+
+`python3 alfred/bauen.py`, dann `alfred/GF-Cockpit.alfredworkflow` doppelklicken. In Alfred `gf <suche>`: Enter startet den Job im Terminal, ⌘+Enter lesende Jobs im Hintergrund mit Mitteilung. Details: [alfred/CLAUDE.md](alfred/CLAUDE.md).
+
 ## Testen
 
 Schritt-für-Schritt mit konkreten Befehlen: [TESTPLAN.md](TESTPLAN.md).
@@ -82,6 +86,7 @@ Lokale Konfiguration (gitignored) aus den Vorlagen anlegen:
 | [sevdesk-mahnwesen](sevdesk-mahnwesen/CLAUDE.md) | offene Rechnungen, Mahnstufen |
 | [n8n](n8n/CLAUDE.md) | Import-Workflow Gmail (Label GMI) → Paperless |
 | [bwa](bwa/CLAUDE.md) | monatliche BWA-Auswertung (Daten lokal) |
+| [alfred](alfred/CLAUDE.md) | Alfred-Workflow `gf` zum Starten der Jobs |
 
 ## Sicherheit
 

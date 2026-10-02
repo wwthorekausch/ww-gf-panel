@@ -4,7 +4,9 @@
     python3 cockpit.py                    # Job-Menü
     python3 cockpit.py job <name|nr>      # Job direkt (z.B. für launchd)
     python3 cockpit.py <modul> <befehl>   # beliebiger Modul-Befehl (wie bisher)
+    python3 cockpit.py alfred [suche]     # Job-Liste als Alfred-Script-Filter-JSON
 """
+import json
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -67,9 +69,24 @@ def menue() -> int:
     return starte(job)
 
 
+def alfred_items(suche: str) -> list[dict]:
+    """Alfred Script Filter: Enter = Terminal, ⌘+Enter = Hintergrund (nur lesende Jobs)."""
+    s = suche.strip().lower()
+    return [{
+        "uid": j.name, "arg": j.name, "autocomplete": j.name,
+        "title": f"{'✎ ' if j.schreibt else ''}{j.name}",
+        "subtitle": j.beschreibung,
+        "mods": {"cmd": {"valid": not j.schreibt,
+                         "subtitle": "schreibt — nur im Terminal (Enter)" if j.schreibt else "im Hintergrund, Ergebnis als Mitteilung"}},
+    } for j in JOBS if s in f"{j.name} {j.beschreibung}".lower()]
+
+
 def main() -> int:
     if len(sys.argv) == 1:
         return menue()
+    if sys.argv[1] == "alfred":
+        print(json.dumps({"items": alfred_items(" ".join(sys.argv[2:]))}, ensure_ascii=False))
+        return 0
     if sys.argv[1] == "job":
         job = finde_job(sys.argv[2]) if len(sys.argv) > 2 else None
         if job is None:

@@ -34,3 +34,4 @@ __pycache__/
 .superpowers/
 paperless/anreichern_letzter_lauf.txt
 sevdesk-mahnwesen/mahn_absprachen.json
+*.alfredworkflow
