@@ -37,15 +37,22 @@ def re_nummer(doc: dict) -> str | None:
     return alle.pop() if len(alle) == 1 else None
 
 
-def finde_beleg(doc: dict, belege: list[dict]) -> dict | None:
-    """Eingangsbeleg, dessen Belegnummer (>= 5 Zeichen) im Dokument steht — nur bei genau einem Treffer."""
-    text = _text(doc)
-    treffer = [b for b in belege if len(b.get("nr") or "") >= 5 and re.search(r"\d", b["nr"])
-               and re.search(rf"(?<![A-Za-z0-9-]){re.escape(b['nr'])}(?![A-Za-z0-9-])", text, re.IGNORECASE)]  # _ trennt
+def _treffer(text: str, belege: list[dict]) -> list[dict]:
+    return [b for b in belege if len(b.get("nr") or "") >= 5 and re.search(r"\d", b["nr"])
+            and re.search(rf"(?<![A-Za-z0-9-]){re.escape(b['nr'])}(?![A-Za-z0-9-])", text, re.IGNORECASE)]  # _ trennt
+
+
+def _eindeutig(treffer: list[dict]) -> dict | None:
     if not treffer or len({b["nr"].lower() for b in treffer}) != 1:
         return None
     # dieselbe Nummer mehrfach (gebuchter Beleg + Entwurfskopie): gebuchten bzw. ältesten nehmen
     return sorted(treffer, key=lambda b: (-int(b.get("status") or 0), int(b["id"]) if str(b["id"]).isdigit() else 0))[0]
+
+
+def finde_beleg(doc: dict, belege: list[dict]) -> dict | None:
+    """Beleg, dessen Nummer im Dokument steht. Titel/Dateiname geht vor Text; Nummer muss eindeutig sein."""
+    kopf = _eindeutig(_treffer(f"{doc.get('title') or ''} {doc.get('original_file_name') or ''}", belege))
+    return kopf or _eindeutig(_treffer(_text(doc), belege))
 
 
 def geld(betrag: Decimal) -> str:

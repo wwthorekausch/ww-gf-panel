@@ -97,3 +97,11 @@ def test_belegnummer_ohne_ziffer_zaehlt_nicht():
               {"id": "2", "nr": "Gebühren", "status": 1000, "firma": "Bank", "brutto": Decimal("1"), "netto": Decimal("1")}]
     doc = {"title": "5673330964", "original_file_name": "5673330964.pdf", "content": "Rechnungsnummer 5673330964 Gebühren"}
     assert a.finde_beleg(doc, belege)["id"] == "1"
+
+
+def test_nummer_im_dateinamen_geht_vor_text():
+    belege = [{"id": "1", "nr": "201020737315", "status": 1000, "firma": "p", "brutto": Decimal("1"), "netto": Decimal("1")},
+              {"id": "2", "nr": "1293330", "status": 1000, "firma": "x", "brutto": Decimal("1"), "netto": Decimal("1")}]
+    doc = {"title": "invoice", "original_file_name": "invoice_201020737315_2026-09-28.pdf",
+           "content": "Invoice 201020737315 Order ID 1293330"}
+    assert a.finde_beleg(doc, belege)["id"] == "1"
