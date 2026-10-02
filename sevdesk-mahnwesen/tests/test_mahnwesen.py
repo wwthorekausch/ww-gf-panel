@@ -131,3 +131,21 @@ def test_mahnbar_nicht_bei_absprache_entwurf_vor_stichtag_oder_frist():
     assert m.mahnbar(r2, entwurf, [], HEUTE)[0] is False
     assert m.mahnbar(m.parse(roh(datum="2024-12-01T00:00:00+01:00")), None, [], HEUTE)[0] is False
     assert m.mahnbar(m.parse(roh(datum="2026-09-30T00:00:00+02:00")), None, [], HEUTE)[0] is False
+
+
+# --- Mahnung versenden nur als Entwurf einer offenen Rechnung ab 2025 ohne Absprache ---
+def test_sendbar_ok_und_guards():
+    orig = m.parse(roh(nr="RE-7", datum="2026-06-01T00:00:00+02:00"))
+    entwurf = {"id": "9", "invoiceType": "MA", "status": "100", "sendDate": None, "origin": {"id": "1"}}
+    assert m.sendbar(entwurf, orig, [])[0] is True
+    assert m.sendbar({**entwurf, "status": "200"}, orig, [])[0] is False            # schon versendet
+    assert m.sendbar({**entwurf, "invoiceType": "RE"}, orig, [])[0] is False        # keine Mahnung
+    assert m.sendbar(entwurf, m.parse(roh(kunde="Muster Group")), ABSPRACHEN)[0] is False
+    assert m.sendbar(entwurf, m.parse(roh(bezahlt="119")), [])[0] is False          # nichts offen
+    assert m.sendbar(entwurf, m.parse(roh(datum="2024-12-01T00:00:00+01:00")), [])[0] is False
+
+
+def test_mail_text_enthaelt_eckdaten():
+    t = m.mahn_mail(nummer="RE-7", datum=date(2026, 6, 1), betrag=Decimal("120.49"), frist=date(2026, 10, 9), stufe=1)
+    assert t["subject"] == "Zahlungserinnerung zur Rechnung RE-7"
+    assert "RE-7 vom 01.06.2026" in t["text"] and "120,49 €" in t["text"] and "09.10.2026" in t["text"]

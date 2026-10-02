@@ -148,3 +148,37 @@ def mahnbar(r: Rechnung, info: MahnInfo | None, absprachen: list[dict], heute: d
     if a[0] != "mahnen":
         return False, "Mahnungs-Entwurf existiert schon — erst versenden", None
     return True, f"{a[1]}. Mahnung", a[1]
+
+
+def sendbar(entwurf: dict, original: Rechnung, absprachen: list[dict]) -> tuple[bool, str]:
+    if entwurf.get("invoiceType") != "MA":
+        return False, "keine Mahnung"
+    if int(entwurf.get("status") or 0) >= 200 or entwurf.get("sendDate"):
+        return False, "Mahnung schon versendet"
+    if original.datum < STICHTAG:
+        return False, "Rechnung vor 2025"
+    if original.offen <= 0:
+        return False, "Rechnung nicht mehr offen"
+    ab = absprache(original.kunde, absprachen, original.nummer)
+    if ab:
+        return False, f"Absprache: {ab['aktion']}"
+    return True, "ok"
+
+
+def _eur_de(b: Decimal) -> str:
+    return f"{b:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def mahn_mail(nummer: str, datum: date, betrag: Decimal, frist: date, stufe: int) -> dict:
+    titel = "Zahlungserinnerung" if stufe <= 1 else f"{stufe}. Mahnung"
+    text = (
+        "Sehr geehrte Damen und Herren,<br><br>"
+        + ("sicher ist es Ihrer Aufmerksamkeit entgangen: " if stufe <= 1 else "trotz unserer Erinnerung ist ")
+        + ("Für" if stufe <= 1 else "für") + f" unsere Rechnung <b>{nummer} vom {datum:%d.%m.%Y}</b> über <b>{_eur_de(betrag)}</b> "
+        + ("konnten wir bisher keinen Zahlungseingang feststellen." if stufe <= 1 else "bisher keine Zahlung eingegangen.")
+        + f"<br><br>Wir bitten Sie, den offenen Betrag bis zum <b>{frist:%d.%m.%Y}</b> auf das in der Rechnung genannte "
+          "Konto zu überweisen. Sollte sich Ihre Zahlung mit diesem Schreiben überschnitten haben, betrachten Sie diese "
+          "Erinnerung bitte als gegenstandslos.<br><br>"
+        + f"Die {titel} finden Sie im Anhang.<br><br>Mit freundlichen Grüßen<br>Web Wikinger GmbH"
+    )
+    return {"subject": f"{titel} zur Rechnung {nummer}", "text": text}

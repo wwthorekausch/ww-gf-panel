@@ -28,6 +28,8 @@ Auch aufrufbar über zentralen Dispatcher im Root: `python ../cockpit.py sevdesk
 
 python cli.py mahnung-entwurf <RE-nr> [--dry-run]  # Mahnungs-Entwurf (MA) anlegen, nur wenn laut Liste fällig; versendet nichts
 
+python cli.py mahnung-senden <RE-nr> [--an mail] [--dry-run]  # Entwurf per E-Mail (PDF) senden, nach Vorschau + j
+
 ## Absprachen
 
 `mahn_absprachen.json` (gitignored, Vorlage `mahn_absprachen.example.json`): Kunden (Teilstring ohne Sonderzeichen, optional `rechnung`) mit `aktion` `nicht_mahnen` oder `inkasso` + `notiz`. `mahnungen` nimmt sie aus den Mahnstufen und listet sie separat unter „Absprachen“.

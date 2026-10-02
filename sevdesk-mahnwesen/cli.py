@@ -149,6 +149,63 @@ def cmd_mahnung_entwurf(args, config) -> None:
           f"Status {m.get('status')}, Frist {(m.get('reminderDeadline') or '')[:10]}, Betrag {m.get('reminderTotal')}")
 
 
+def cmd_mahnung_senden(args, config) -> None:
+    """Mahnungs-Entwurf einer Rechnung per E-Mail (sevDesk sendViaEmail, PDF im Anhang) — nur nach Vorschau + 'j'."""
+    import json
+    import re
+    client = build_client(config)
+    nr = args.rechnung.upper() if args.rechnung.upper().startswith("RE-") else f"RE-{args.rechnung}"
+    orig_roh = [x for x in client.get("Invoice", params={"invoiceNumber": nr, "embed": "contact"})["objects"]
+                if x.get("invoiceType") != "MA"]
+    if len(orig_roh) != 1:
+        print(f"{nr}: Rechnung nicht eindeutig gefunden.")
+        return
+    original = mahnwesen.parse(orig_roh[0])
+    entwuerfe = [m for m in _alle(client, {"invoiceType": "MA"})
+                 if str((m.get("origin") or {}).get("id")) == original.id and int(m.get("status") or 0) < 200]
+    if len(entwuerfe) != 1:
+        print(f"{nr}: {len(entwuerfe)} Mahnungs-Entwürfe gefunden — erwartet genau einen (erst mahnung-entwurf).")
+        return
+    ma = entwuerfe[0]
+    pfad = MODULE_DIR / "mahn_absprachen.json"
+    absprachen = json.loads(pfad.read_text(encoding="utf-8")) if pfad.exists() else []
+    ok, grund = mahnwesen.sendbar(ma, original, absprachen)
+    if not ok:
+        print(f"Nicht versendet: {grund}")
+        return
+    an = args.an
+    if not an:
+        kid = (orig_roh[0].get("contact") or {}).get("id")
+        wege = [w for w in client.get("CommunicationWay", params={"contact[id]": kid, "contact[objectName]": "Contact"})["objects"]
+                if w.get("type") == "EMAIL" and w.get("value")]
+        haupt = [w for w in wege if str(w.get("main")) == "1"]
+        auswahl = haupt or wege
+        if len(auswahl) != 1:
+            print(f"E-Mail-Adresse nicht eindeutig ({[w['value'] for w in wege]}) — mit --an angeben.")
+            return
+        an = auswahl[0]["value"]
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", an or ""):
+        print(f"Ungültige E-Mail-Adresse: {an}")
+        return
+    frist = date.fromisoformat((ma.get("reminderDeadline") or original.faellig.isoformat())[:10])
+    stufe = int(ma.get("dunningLevel") or 1)
+    mail = mahnwesen.mahn_mail(original.nummer, original.datum, original.offen, frist, stufe)
+    print(f"Mahnung ID {ma['id']} (Stufe {stufe}) zu {original.nummer}, {original.kunde}, offen {_eur(original.offen).strip()}")
+    print(f"An:      {an}\nBetreff: {mail['subject']}\nAnhang:  Mahnung als PDF (sevDesk)\n")
+    print(re.sub(r"<br>", "\n", re.sub(r"</?b>", "", mail["text"])))
+    if args.dry_run:
+        print("\nDRY-RUN — nichts versendet")
+        return
+    if input("\nJetzt per E-Mail versenden? [j/N] ").strip().lower() != "j":
+        print("nicht versendet")
+        return
+    client._request("POST", f"Invoice/{int(ma['id'])}/sendViaEmail",
+                    json={"toEmail": an, "subject": mail["subject"], "text": mail["text"], "copy": False,
+                          "additionalAttachments": None, "ccEmail": None, "bccEmail": None, "sendXml": False})
+    nach = client.get(f"Invoice/{ma['id']}")["objects"][0]
+    print(f"Versendet: Status {nach.get('status')}, sendDate {nach.get('sendDate')}, sendType {nach.get('sendType')}")
+
+
 def cmd_offen(args, config) -> None:
     """Offener Betrag pro Kunde (Gutschriften gegengerechnet), davon überfällig."""
     if args.sync:
@@ -181,6 +238,10 @@ def main() -> int:
     p = sub.add_parser("mahnung-entwurf", help="Mahnungs-Entwurf für eine fällige Rechnung anlegen (versendet nicht)")
     p.add_argument("rechnung", help="Rechnungsnummer, z.B. RE-27319 oder 27319")
     p.add_argument("--dry-run", action="store_true")
+    p = sub.add_parser("mahnung-senden", help="Mahnungs-Entwurf per E-Mail versenden (nach Vorschau + j)")
+    p.add_argument("rechnung", help="Rechnungsnummer, z.B. RE-27276")
+    p.add_argument("--an", help="Empfänger-E-Mail (sonst aus dem Kontakt)")
+    p.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
     try:
@@ -196,6 +257,7 @@ def main() -> int:
         "mahnungen": cmd_mahnungen,
         "offen": cmd_offen,
         "mahnung-entwurf": cmd_mahnung_entwurf,
+        "mahnung-senden": cmd_mahnung_senden,
     }
     handlers[args.command](args, config)
     return 0

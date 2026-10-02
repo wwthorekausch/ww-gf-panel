@@ -48,7 +48,7 @@ Jedes Modul verwaltet eigene `config.ini` innerhalb seines Ordners (gitignored, 
 
 - Rechnungen, Gutschriften und Stornorechnungen (Ausgangsbelege) nie direkt im Status ändern (kein manuelles bezahlt/storniert/Entwurf, kein Löschen, keine Inhaltsänderung). Erlaubt: Zahlung zuordnen (`bookAmount`) — dass sevDesk dadurch selbst auf bezahlt setzt, ist ok.
 - Eingangsbelege (Voucher): Lieferantenname (`supplierName`, nur dieses Feld) nach OCR-Wert aus Paperless setzen, nur über `paperless korrigieren` nach Einzel-Freigabe „j“ (Entscheidung 2026-10-02: OCR-Daten haben Vorrang).
-- Mahnungen: nur Entwürfe anlegen (`Invoice/Factory/createInvoiceReminder`) über `sevdesk-mahnwesen mahnung-entwurf` nach Einzel-Freigabe; nie versenden, Rechnung selbst bleibt unverändert.
+- Mahnungen: Entwürfe anlegen (`Invoice/Factory/createInvoiceReminder`) über `sevdesk-mahnwesen mahnung-entwurf`; Versand per E-Mail (`Invoice/{id}/sendViaEmail`) nur über `mahnung-senden` nach Vorschau (Empfänger + Text) und ausdrücklicher Freigabe je Mahnung. Rechnung selbst bleibt unverändert.
 - Nur Belege und Umsätze ab 01.01.2025 anfassen, Abarbeitung von neu nach alt.
 - GetMyInvoices: Key nur aus Keychain `ww-gf-cockpit-getmyinvoices`. Einziger Schreibzugriff: Tag „Sevdesk“ an Dokument anhängen (vorhandene Tags bleiben), nur über `sevdesk-belege gmi-hochladen`.
 - Nie löschen — einzige Ausnahme: Belegentwurf-Duplikate (Status 50, gleiche Belegnummer + Lieferant + Betrag + Datum, ältester bleibt), nur über `sevdesk-belege aufraeumen` nach Einzel-Freigabe „j“ (Entscheidung 2026-10-01).
