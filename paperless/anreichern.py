@@ -29,7 +29,7 @@ def _text(doc: dict) -> str:
 
 def re_nummer(doc: dict) -> str | None:
     """Rechnungsnummer RE-xxxx: Treffer in Titel/Dateiname gewinnt, sonst genau eine im Text."""
-    muster = r"\bRE-\d{4,6}\b"
+    muster = r"(?<![A-Za-z0-9])RE-\d{4,6}(?![0-9])"   # _ trennt (Dateinamen)
     kopf = set(re.findall(muster, f"{doc.get('title') or ''} {doc.get('original_file_name') or ''}"))
     if len(kopf) == 1:
         return kopf.pop()
@@ -49,10 +49,36 @@ def _eindeutig(treffer: list[dict]) -> dict | None:
     return sorted(treffer, key=lambda b: (-int(b.get("status") or 0), int(b["id"]) if str(b["id"]).isdigit() else 0))[0]
 
 
+def betrag_im_text(betrag: Decimal | None, text: str) -> bool:
+    if betrag is None:
+        return False
+    b = abs(betrag).quantize(Decimal("0.01"))
+    ganz, cent = f"{b:.2f}".split(".")
+    tausend_de = f"{int(ganz):,}".replace(",", ".")
+    tausend_en = f"{int(ganz):,}"
+    formen = {f"{ganz},{cent}", f"{ganz}.{cent}", f"{tausend_de},{cent}", f"{tausend_en}.{cent}"}
+    return any(re.search(rf"(?<![\d.,]){re.escape(f)}(?!\d)", text) for f in formen)
+
+
 def finde_beleg(doc: dict, belege: list[dict]) -> dict | None:
-    """Beleg, dessen Nummer im Dokument steht. Titel/Dateiname geht vor Text; Nummer muss eindeutig sein."""
+    """Beleg, dessen Nummer im Dokument steht. Titel/Dateiname geht vor Text; Nummer muss eindeutig sein.
+    Treffer nur im Text zählen nur, wenn auch der Bruttobetrag im Text steht (sonst z. B. Postleitzahl 24114)."""
     kopf = _eindeutig(_treffer(f"{doc.get('title') or ''} {doc.get('original_file_name') or ''}", belege))
-    return kopf or _eindeutig(_treffer(_text(doc), belege))
+    if kopf:
+        return kopf
+    text = _text(doc)
+    return _eindeutig([b for b in _treffer(text, belege) if betrag_im_text(b.get("brutto"), text)])
+
+
+def netto_pruefen(brutto: Decimal | None, netto: Decimal | None, text: str) -> Decimal | None:
+    """Netto == Brutto ist verdächtig (Quelle ohne USt gebucht): nur übernehmen, was der Text belegt."""
+    if netto is None or brutto is None or netto != brutto:
+        return netto
+    for satz in (Decimal("1.19"), Decimal("1.07")):
+        n = (brutto / satz).quantize(Decimal("0.01"))
+        if betrag_im_text(n, text):
+            return n
+    return None
 
 
 def geld(betrag: Decimal) -> str:
@@ -69,6 +95,17 @@ PLATZHALTER = {"keine angabe", "sonstiges", "unbekannt", "diverse"}
 def korrespondent_tauglich(name: str | None) -> bool:
     key = _norm(name or "")
     return bool(key) and key not in PLATZHALTER
+
+
+def aehnlich(a_: str, b_: str) -> bool:
+    """Gleiche Firma unter anderem Namen: ein Name im anderen enthalten oder erstes Wort teilt 6 Zeichen."""
+    x, y = _norm(a_), _norm(b_)
+    if not x or not y:
+        return False
+    if x in y or y in x:
+        return True
+    w1, w2 = x.split()[0], y.split()[0]
+    return len(w1) >= 6 and len(w2) >= 6 and w1[:6] == w2[:6]
 
 
 def korrespondent_id(name: str, korrespondenten: list[dict]) -> int | None:
@@ -89,7 +126,7 @@ def plan(doc: dict, quelle: Quelle | None, cf: dict[str, int], optionen: dict, k
             "Rechnungsnummer": quelle.nummer,
             "Brutto": geld(quelle.brutto) if quelle.brutto is not None else None,
             "Netto": geld(quelle.netto) if quelle.netto is not None else None,
-            "Firma": quelle.firma,
+            "Firma": quelle.firma if korrespondent_tauglich(quelle.firma) else None,
             "Kundenummer": quelle.kundennummer,
             "SevdeskID": quelle.sevdesk_id,
             "Rechnungstyp": optionen.get("Rechnungstyp", {}).get(quelle.rechnungstyp or ""),
@@ -106,4 +143,49 @@ def plan(doc: dict, quelle: Quelle | None, cf: dict[str, int], optionen: dict, k
             body["correspondent"] = korrespondent_id
     if speicherpfad_id and not doc.get("storage_path"):
         body["storage_path"] = speicherpfad_id
+    return body or None
+
+
+KLAERBAR = ("Rechnungsnummer", "Brutto", "Netto", "Firma", "SevdeskID", "Rechnungstyp", "Zahlart")
+
+
+def _sollwerte(quelle: Quelle, optionen: dict) -> dict:
+    return {
+        "Rechnungsnummer": quelle.nummer,
+        "Brutto": geld(quelle.brutto) if quelle.brutto is not None else None,
+        "Netto": geld(quelle.netto) if quelle.netto is not None else None,
+        "Firma": quelle.firma if korrespondent_tauglich(quelle.firma) else None,
+        "Kundenummer": quelle.kundennummer,
+        "SevdeskID": quelle.sevdesk_id,
+        "Rechnungstyp": optionen.get("Rechnungstyp", {}).get(quelle.rechnungstyp or ""),
+        "Zahlart": optionen.get("Zahlart", {}).get(quelle.zahlart or ""),
+    }
+
+
+def korrektur(doc: dict, quelle: Quelle | None, cf: dict[str, int], optionen: dict, korrespondent_id,
+              korrespondent_namen: dict | None = None) -> dict | None:
+    """Abweichungen zur Quelle (überschreibt!). Ohne Quelle nur leeren, wenn eine SevdeskID gesetzt ist
+    (= früherer Tool-Treffer, der nicht mehr passt). Ähnlicher vorhandener Korrespondent bleibt. Nur nach Rückfrage."""
+    vorhanden = {f["field"]: f.get("value") for f in doc.get("custom_fields") or []}
+    if quelle is None and vorhanden.get(cf.get("SevdeskID")) in (None, ""):
+        return None
+    soll = dict(vorhanden)
+    if quelle is not None:
+        for name, wert in _sollwerte(quelle, optionen).items():
+            fid = cf.get(name)
+            if fid is not None and wert not in (None, ""):
+                soll[fid] = wert
+    else:
+        for name in KLAERBAR:
+            fid = cf.get(name)
+            if fid in soll:
+                soll[fid] = None
+    body = {}
+    if soll != vorhanden:
+        body["custom_fields"] = [{"field": f, "value": v} for f, v in soll.items()]
+    ziel_korr = korrespondent_id if quelle is not None else None
+    aktuell = (korrespondent_namen or {}).get(doc.get("correspondent"), "")
+    behalten = quelle is not None and quelle.firma and aktuell and aehnlich(aktuell, quelle.firma)
+    if not behalten and (quelle is None or korrespondent_id) and doc.get("correspondent") != ziel_korr:
+        body["correspondent"] = ziel_korr
     return body or None

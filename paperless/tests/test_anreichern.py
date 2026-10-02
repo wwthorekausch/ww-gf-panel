@@ -105,3 +105,80 @@ def test_nummer_im_dateinamen_geht_vor_text():
     doc = {"title": "invoice", "original_file_name": "invoice_201020737315_2026-09-28.pdf",
            "content": "Invoice 201020737315 Order ID 1293330"}
     assert a.finde_beleg(doc, belege)["id"] == "1"
+
+
+# --- Korrekturen nach Live-Befund ---
+def test_textnummer_braucht_betrag_postleitzahl_trifft_nicht():
+    belege = [{"id": "129585933", "nr": "24114", "status": 1000, "firma": "Vicci", "brutto": Decimal("89.48"), "netto": Decimal("83.63")}]
+    doc = {"title": "160202127", "original_file_name": "160202127.pdf",
+           "content": "DigitalOcean Deliusstraße 7 Kiel 24114 GERMANY Payment -$66.40"}
+    assert a.finde_beleg(doc, belege) is None
+
+
+def test_textnummer_mit_betrag_trifft():
+    belege = [{"id": "1", "nr": "24114", "status": 1000, "firma": "Vicci", "brutto": Decimal("89.48"), "netto": Decimal("83.63")}]
+    doc = {"title": "x", "original_file_name": "y.pdf", "content": "Rechnung 24114 Gesamt 89,48 EUR"}
+    assert a.finde_beleg(doc, belege)["id"] == "1"
+
+
+def test_betrag_im_text_formate():
+    assert a.betrag_im_text(Decimal("1234.5"), "Summe 1.234,50 €")
+    assert a.betrag_im_text(Decimal("66.4"), "Total $66.40")
+    assert not a.betrag_im_text(Decimal("89.48"), "Total 66,40")
+
+
+def test_netto_gleich_brutto_aus_text_korrigiert():
+    text = "Summe Betrag 136,63 € +19 % USt. auf 136,63 € Gesamt 162,59 €"
+    assert a.netto_pruefen(Decimal("162.59"), Decimal("162.59"), text) == Decimal("136.63")
+
+
+def test_netto_gleich_brutto_ohne_beleg_im_text_leer():
+    assert a.netto_pruefen(Decimal("162.59"), Decimal("162.59"), "keine Angaben") is None
+
+
+def test_netto_verschieden_bleibt():
+    assert a.netto_pruefen(Decimal("119"), Decimal("100"), "") == Decimal("100")
+
+
+def test_korrektur_ueberschreibt_und_leert_nach_quelle():
+    doc = {"id": 181, "custom_fields": [{"field": 1, "value": "24114"}, {"field": 3, "value": "Vicci"}, {"field": 4, "value": "K9"},
+                                        {"field": 5, "value": "129585933"}],
+           "correspondent": 5, "storage_path": 1}
+    body = a.korrektur(doc, None, CF, OPT, korrespondent_id=None)
+    werte = {f["field"]: f["value"] for f in body["custom_fields"]}
+    assert werte[1] is None and werte[3] is None and werte[4] == "K9"   # Kundennummer: nicht von Quelle abhängig -> bleibt
+    assert body["correspondent"] is None
+
+
+def test_korrektur_keine_aenderung_none():
+    doc = {"id": 1, "custom_fields": [{"field": 1, "value": "RE-1"}], "correspondent": 3, "storage_path": 1}
+    assert a.korrektur(doc, a.Quelle(nummer="RE-1"), CF, OPT, korrespondent_id=3) is None
+
+
+def test_aehnlicher_korrespondent():
+    assert a.aehnlich("Kostal", "KOSTAL Industrie Elektrik GmbH & Co. KG")
+    assert a.aehnlich("PlentyONE GmbH", "plentymarkets") and a.aehnlich("PlentyONE GmbH", "plentysystems AG")
+    assert not a.aehnlich("Vicci Caffe Rösterei GmbH", "DigitalOcean")
+
+
+def test_korrektur_behaelt_aehnlichen_korrespondenten():
+    doc = {"id": 1, "custom_fields": [], "correspondent": 3, "storage_path": 1}
+    ks = {3: "Kostal"}
+    body = a.korrektur(doc, a.Quelle(firma="KOSTAL Industrie Elektrik GmbH & Co. KG"), CF, OPT,
+                       korrespondent_id=None, korrespondent_namen=ks)
+    assert "correspondent" not in body
+
+
+def test_re_nummer_mit_unterstrich():
+    assert a.re_nummer({"title": "2026-05-07_Rechnung_RE-27242_f3651267", "original_file_name": "", "content": "RE-1 RE-2"}) == "RE-27242"
+
+
+def test_ohne_quelle_nur_leeren_wenn_sevdesk_id_gesetzt():
+    doc = {"id": 95, "custom_fields": [{"field": 1, "value": "RE-27242"}, {"field": 3, "value": "Hood"}], "correspondent": 5, "storage_path": 1}
+    assert a.korrektur(doc, None, CF, OPT, korrespondent_id=None) is None
+
+
+def test_platzhalter_firma_wird_nicht_eingetragen():
+    doc = {"id": 1, "custom_fields": [], "correspondent": None, "storage_path": 1}
+    body = a.plan(doc, a.Quelle(nummer="11811331", firma="- keine Angabe -"), CF, OPT, None, 1)
+    assert {f["field"]: f["value"] for f in body["custom_fields"]} == {1: "11811331"}

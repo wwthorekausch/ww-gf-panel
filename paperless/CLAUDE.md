@@ -11,6 +11,8 @@ Duplikat-Prüfung und -Löschung in Paperless-ngx.
 
     python3 cli.py duplikate              # nur lesen: Gruppen inhaltsgleicher Dokumente
     python3 cli.py loeschen [--dry-run]   # je Gruppe nach "j": jüngere löschen, ältestes bleibt
+    python3 cli.py anreichern [--dry-run] [--limit N]  # leere Felder/Korrespondent/Speicherpfad aus sevDesk/GMI, fehlt_in_sevdesk.csv
+    python3 cli.py korrigieren [--dry-run] # Abweichungen zur Quelle je Dokument nach "j" überschreiben
 
 ## Regeln
 
@@ -25,3 +27,5 @@ Duplikat-Prüfung und -Löschung in Paperless-ngx.
 ## Selflearning
 
 ### Lessons
+
+- Nummer nur im OCR-Text ist schwach (PLZ 24114 = Vicci-Rechnungsnr) → nur mit Betrag im Text zählen. Netto==Brutto aus sevDesk/GMI oft falsch → nur übernehmen, was der Text belegt.

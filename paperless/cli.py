@@ -106,6 +106,94 @@ def _quellen():
     return rechnungen, belege, gmi_docs
 
 
+def _bestimme(doc, typen, rechnungen, belege, gmi_docs):
+    """(Quelle|None, Status-Text für 'fehlt in sevDesk' oder '')."""
+    text = f"{doc.get('title') or ''} {doc.get('original_file_name') or ''} {doc.get('content') or ''}"
+    if doc.get("document_type") == typen.get("Ausgangsrechnung"):
+        nr = anreichern.re_nummer(doc)
+        quelle = rechnungen.get(nr or "")
+        return quelle, ("" if quelle else f"Ausgangsrechnung {nr or '(Nr. nicht eindeutig)'} nicht in sevDesk")
+    if doc.get("document_type") == typen.get("Eingangsrechnung"):
+        sb, gb = anreichern.finde_beleg(doc, belege), anreichern.finde_beleg(doc, gmi_docs)
+        quelle = None
+        if sb or gb:
+            basis = sb or gb
+            netto = anreichern.netto_pruefen(basis["brutto"], basis["netto"], text)
+            if netto is None and gb and gb is not basis:
+                netto = anreichern.netto_pruefen(gb["brutto"], gb["netto"], text)
+            quelle = anreichern.Quelle(nummer=basis["nr"], brutto=basis["brutto"], netto=netto, firma=basis["firma"],
+                                       sevdesk_id=sb["id"] if sb else None,
+                                       rechnungstyp="Gutschrift" if (gb or {}).get("typ") == "CREDIT_NOTE" else "Rechnung",
+                                       zahlart=anreichern.zahlart((gb or {}).get("zahlart")))
+        status = "" if sb else "Eingangsrechnung nicht in sevDesk" + (f" (in GMI: {gb['nr']})" if gb else " (auch nicht in GMI)")
+        return quelle, status
+    return None, ""
+
+
+def _lesbar(body, doc, cf_namen, opt_labels, korr_namen):
+    alt = {f["field"]: f.get("value") for f in doc.get("custom_fields") or []}
+    teile = []
+    for f in body.get("custom_fields", []):
+        if alt.get(f["field"]) != f["value"]:
+            a_ = opt_labels.get(alt.get(f["field"]), alt.get(f["field"]))
+            n_ = opt_labels.get(f["value"], f["value"])
+            teile.append(f"{cf_namen.get(f['field'])}: {a_!s} → {n_!s}")
+    if "correspondent" in body:
+        teile.append(f"Korrespondent: {korr_namen.get(doc.get('correspondent'))} → {korr_namen.get(body['correspondent'], body['correspondent'])}")
+    return "; ".join(teile)
+
+
+def cmd_korrigieren(args) -> int:
+    """Abweichungen (falsche Werte/Korrespondenten) nach Rückfrage je Dokument überschreiben."""
+    c = client()
+    felder = c.alle("custom_fields")
+    cf = {f["name"]: f["id"] for f in felder}
+    cf_namen = {f["id"]: f["name"] for f in felder}
+    optionen, opt_labels = {}, {}
+    for f in felder:
+        if f["data_type"] == "select":
+            optionen[f["name"]] = {o["label"]: o["id"] for o in (f.get("extra_data") or {}).get("select_options", [])}
+            opt_labels.update({o["id"]: o["label"] for o in (f.get("extra_data") or {}).get("select_options", [])})
+    typen = {t["name"]: t["id"] for t in c.alle("document_types")}
+    korrespondenten = c.alle("correspondents")
+    rechnungen, belege, gmi_docs = _quellen()
+    rechnung_typen = {typen.get("Ausgangsrechnung"), typen.get("Eingangsrechnung")}
+    kandidaten = []
+    for doc in c.dokumente():
+        if doc.get("document_type") not in rechnung_typen:
+            continue
+        quelle, _ = _bestimme(doc, typen, rechnungen, belege, gmi_docs)
+        neu_name, kid = None, None
+        if quelle and anreichern.korrespondent_tauglich(quelle.firma):
+            kid = anreichern.korrespondent_id(quelle.firma, korrespondenten)
+            if kid is None:
+                neu_name, kid = quelle.firma, f"(neu: {quelle.firma})"
+        body = anreichern.korrektur(doc, quelle, cf, optionen, kid, {k["id"]: k["name"] for k in korrespondenten})
+        if body:
+            kandidaten.append((doc, body, neu_name))
+    korr_namen = {k["id"]: k["name"] for k in korrespondenten}
+    print(f"{len(kandidaten)} Dokumente mit Abweichungen. j = übernehmen, Enter = überspringen, q = Ende\n")
+    geaendert = 0
+    for doc, body, neu_name in kandidaten:
+        print(f"#{doc['id']:<5} {(doc.get('title') or '')[:45]}\n   {_lesbar(body, doc, cf_namen, opt_labels, korr_namen)}")
+        if args.dry_run:
+            continue
+        antwort = input("   übernehmen? [j/Enter/q] ").strip().lower()
+        if antwort == "q":
+            break
+        if antwort != "j":
+            continue
+        if neu_name:
+            k = c.korrespondent_anlegen(neu_name)
+            korrespondenten.append(k)
+            korr_namen[k["id"]] = k["name"]
+            body = {**body, "correspondent": k["id"]}
+        c.dokument_patchen(doc["id"], body)
+        geaendert += 1
+    print(f"\n{'DRY-RUN' if args.dry_run else 'geändert'}: {geaendert if not args.dry_run else len(kandidaten)} Dokumente")
+    return 0
+
+
 def cmd_anreichern(args) -> int:
     c = client()
     cf = {f["name"]: f["id"] for f in c.alle("custom_fields")}
@@ -120,21 +208,7 @@ def cmd_anreichern(args) -> int:
     docs = c.dokumente()
     patches, fehlt, neue_korr = [], [], set()
     for doc in docs:
-        quelle, status = None, ""
-        if doc.get("document_type") == typen.get("Ausgangsrechnung"):
-            nr = anreichern.re_nummer(doc)
-            quelle = rechnungen.get(nr or "")
-            status = "" if quelle else f"Ausgangsrechnung {nr or '(Nr. nicht eindeutig)'} nicht in sevDesk"
-        elif doc.get("document_type") == typen.get("Eingangsrechnung"):
-            sb, gb = anreichern.finde_beleg(doc, belege), anreichern.finde_beleg(doc, gmi_docs)
-            if sb or gb:
-                basis = sb or gb
-                quelle = anreichern.Quelle(nummer=basis["nr"], brutto=basis["brutto"], netto=basis["netto"], firma=basis["firma"],
-                                           sevdesk_id=sb["id"] if sb else None,
-                                           rechnungstyp="Gutschrift" if (gb or {}).get("typ") == "CREDIT_NOTE" else "Rechnung",
-                                           zahlart=anreichern.zahlart((gb or {}).get("zahlart")))
-            if not sb:
-                status = "Eingangsrechnung nicht in sevDesk" + (f" (in GMI: {gb['nr']})" if gb else " (auch nicht in GMI)")
+        quelle, status = _bestimme(doc, typen, rechnungen, belege, gmi_docs)
         if status:
             fehlt.append((doc, status))
         kid, neu_name = None, None
@@ -187,8 +261,11 @@ def main() -> int:
     a = sub.add_parser("anreichern")
     a.add_argument("--dry-run", action="store_true")
     a.add_argument("--limit", type=int, default=1000)
+    k = sub.add_parser("korrigieren")
+    k.add_argument("--dry-run", action="store_true")
     args = p.parse_args()
-    return {"duplikate": cmd_duplikate, "loeschen": cmd_loeschen, "anreichern": cmd_anreichern}[args.command](args)
+    return {"duplikate": cmd_duplikate, "loeschen": cmd_loeschen, "anreichern": cmd_anreichern,
+            "korrigieren": cmd_korrigieren}[args.command](args)
 
 
 if __name__ == "__main__":
