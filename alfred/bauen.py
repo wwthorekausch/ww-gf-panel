@@ -31,7 +31,7 @@ def info(python: str, cockpit: Path) -> dict:
                 "alfredfiltersresults": False, "scriptfile": "",
                 "script": f'{aufruf} alfred "$1"'}},
             {"uid": TERMINAL, "type": "alfred.workflow.action.terminalcommand", "version": 1, "config": {
-                "command": f"{aufruf} job {{query}}", "escaping": 0}},
+                "script": f"{aufruf} job {{query}}", "escaping": 0}},
             {"uid": SKRIPT, "type": "alfred.workflow.action.script", "version": 2, "config": {
                 "type": 0, "scriptargtype": 1, "escaping": 0, "concurrently": False, "scriptfile": "",
                 "script": f'{aufruf} job "$1" 2>&1 | tail -n 3'}},
