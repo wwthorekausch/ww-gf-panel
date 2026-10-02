@@ -18,7 +18,7 @@ Sammlung lokaler Automatisierungs-Skripte für Geschäftsführungs-Tätigkeiten 
 - [sevdesk-belege](sevdesk-belege/CLAUDE.md) — Belege prüfen/korrigieren, Zahlungen zuordnen, Standardbuchungen (sevDesk API)
 - [paperless](paperless/CLAUDE.md) — Paperless-Duplikate finden und löschen
 - [launchd](launchd/CLAUDE.md) — täglicher Lauf 07:00 (nur Jobs ohne Rückfrage)
-- [n8n](n8n/CLAUDE.md) — n8n-Import-Workflows (Gmail GMI-Label → Paperless)
+- [n8n](n8n/CLAUDE.md) — n8n-Import-Workflows (Gmail GMI-Label → Paperless; Paperless-Rechnungen mit Gemini prüfen)
 - [bwa](bwa/CLAUDE.md) — monatliche BWA-Daten (JSON) + Auswertungen zum Monatsvergleich
 
 ## Zentrale Ausführung
