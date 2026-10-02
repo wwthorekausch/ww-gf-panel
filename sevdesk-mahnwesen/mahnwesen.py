@@ -197,3 +197,11 @@ def waehle_mail(wege: list[dict]) -> str | None:
         if len(auswahl) > 1:
             return None
     return None
+
+
+def neue_frist_ok(alt: date | None, neu: date, heute: date) -> tuple[bool, str]:
+    if alt is not None and alt >= heute:
+        return False, f"alte Frist {alt:%d.%m.%Y} läuft noch"
+    if neu <= heute:
+        return False, "neue Frist muss in der Zukunft liegen"
+    return True, "ok"

@@ -186,6 +186,27 @@ def cmd_mahnung_senden(args, config) -> None:
         print(f"Ungültige E-Mail-Adresse: {an}")
         return
     frist = date.fromisoformat((ma.get("reminderDeadline") or original.faellig.isoformat())[:10])
+    if args.neue_frist:
+        neu = date.fromisoformat(args.neue_frist)
+        ok, grund = mahnwesen.neue_frist_ok(frist, neu, date.today())
+        if not ok:
+            print(f"Frist nicht geändert: {grund}")
+            return
+        if args.dry_run:
+            print(f"(dry-run) Frist würde {frist:%d.%m.%Y} → {neu:%d.%m.%Y} gesetzt")
+        else:
+            vorher = (ma.get("sumGross"), ma.get("dunningLevel"), ma.get("origin", {}).get("id"))
+            client.put(f"Invoice/{int(ma['id'])}", json={"reminderDeadline": neu.isoformat()})
+            ma = client.get(f"Invoice/{ma['id']}")["objects"][0]
+            nachher = (ma.get("sumGross"), ma.get("dunningLevel"), ma.get("origin", {}).get("id"))
+            if (ma.get("reminderDeadline") or "")[:10] != neu.isoformat() or vorher != nachher or int(ma.get("status") or 0) >= 200:
+                print(f"STOPP: Entwurf nach Friständerung unerwartet ({ma.get('reminderDeadline')}, {nachher}) — nicht versendet")
+                return
+            print(f"Frist gesetzt: {frist:%d.%m.%Y} → {neu:%d.%m.%Y} (Entwurf nachgelesen, Betrag/Stufe unverändert)")
+        frist = neu
+    elif frist < date.today():
+        print(f"Frist der Mahnung {frist:%d.%m.%Y} ist abgelaufen — mit --neue-frist JJJJ-MM-TT neu setzen.")
+        return
     stufe = int(ma.get("dunningLevel") or 1)
     mail = mahnwesen.mahn_mail(original.nummer, original.datum, original.offen, frist, stufe)
     print(f"Mahnung ID {ma['id']} (Stufe {stufe}) zu {original.nummer}, {original.kunde}, offen {_eur(original.offen).strip()}")
@@ -239,6 +260,7 @@ def main() -> int:
     p = sub.add_parser("mahnung-senden", help="Mahnungs-Entwurf per E-Mail versenden (nach Vorschau + j)")
     p.add_argument("rechnung", help="Rechnungsnummer, z.B. RE-27276")
     p.add_argument("--an", help="Empfänger-E-Mail (sonst aus dem Kontakt)")
+    p.add_argument("--neue-frist", help="abgelaufene Frist im Entwurf neu setzen (JJJJ-MM-TT)")
     p.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 

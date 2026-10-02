@@ -28,7 +28,7 @@ Auch aufrufbar über zentralen Dispatcher im Root: `python ../cockpit.py sevdesk
 
 python cli.py mahnung-entwurf <RE-nr> [--dry-run]  # Mahnungs-Entwurf (MA) anlegen, nur wenn laut Liste fällig; versendet nichts
 
-python cli.py mahnung-senden <RE-nr> [--an mail] [--dry-run]  # Entwurf per E-Mail (PDF) senden, nach Vorschau + j
+python cli.py mahnung-senden <RE-nr> [--an mail] [--neue-frist JJJJ-MM-TT] [--dry-run]  # Entwurf per E-Mail (PDF) senden, nach Vorschau + j
 
 ## Absprachen
 

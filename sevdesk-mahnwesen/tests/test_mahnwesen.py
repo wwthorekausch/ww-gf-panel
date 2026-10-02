@@ -157,3 +157,9 @@ def test_mail_wahl_rechnungsadresse_vor_haupt():
     assert m.waehle_mail([w("a@x.de", main="1"), w("b@x.de")]) == "a@x.de"
     assert m.waehle_mail([w("a@x.de"), w("b@x.de")]) is None
     assert m.waehle_mail([w("nur@x.de")]) == "nur@x.de"
+
+
+def test_neue_frist_nur_wenn_alt_abgelaufen_und_neu_in_zukunft():
+    assert m.neue_frist_ok(date(2025, 12, 11), date(2026, 10, 9), HEUTE) == (True, "ok")
+    assert m.neue_frist_ok(date(2026, 10, 20), date(2026, 10, 9), HEUTE)[0] is False     # alte Frist läuft noch
+    assert m.neue_frist_ok(date(2025, 12, 11), date(2026, 9, 30), HEUTE)[0] is False     # neue Frist in der Vergangenheit
