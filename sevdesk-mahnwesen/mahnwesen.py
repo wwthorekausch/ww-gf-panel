@@ -19,6 +19,14 @@ class Rechnung:
     offen: Decimal
     typ: str
     status: int
+    stufe: int = 0            # sevDesk dunningLevel der Rechnung
+
+
+@dataclass(frozen=True)
+class MahnInfo:
+    stufe: int
+    frist: date | None        # reminderDeadline der letzten Mahnung
+    entwurf: bool             # letzte Mahnung noch nicht versendet
 
 
 def _dec(x) -> Decimal:
@@ -34,7 +42,7 @@ def parse(d: dict) -> Rechnung:
         kunde=kontakt.get("name") or d.get("addressName") or "?", kundennummer=str(kontakt.get("customerNumber") or ""),
         datum=datum, faellig=datum + timedelta(days=ziel),
         brutto=_dec(d.get("sumGross")), offen=_dec(d.get("sumGross")) - _dec(d.get("paidAmount")),
-        typ=d.get("invoiceType") or "", status=int(d.get("status") or 0),
+        typ=d.get("invoiceType") or "", status=int(d.get("status") or 0), stufe=int(d.get("dunningLevel") or 0),
     )
 
 
@@ -76,3 +84,36 @@ def offen_pro_kunde(rechnungen: list[Rechnung], heute: date) -> list[tuple[str, 
 
 def ab_stichtag(rechnungen: list[Rechnung]) -> list[Rechnung]:
     return [r for r in rechnungen if r.datum >= STICHTAG]
+
+
+def _d(x) -> date | None:
+    return date.fromisoformat(x[:10]) if x else None
+
+
+def letzte_mahnungen(mahnungen: list[dict]) -> dict[str, MahnInfo]:
+    """Rechnungs-ID (origin) -> letzte sevDesk-Mahnung (höchste Stufe, dann jüngstes Datum)."""
+    beste = {}
+    for m in mahnungen:
+        origin = str((m.get("origin") or {}).get("id") or "")
+        if not origin:
+            continue
+        key = (int(m.get("dunningLevel") or 0), m.get("invoiceDate") or "")
+        if origin not in beste or key > beste[origin][0]:
+            beste[origin] = (key, m)
+    return {o: MahnInfo(stufe=k[0], frist=_d(m.get("reminderDeadline")),
+                        entwurf=int(m.get("status") or 0) < 200 and not m.get("sendDate"))
+            for o, (k, m) in beste.items()}
+
+
+def aktion(r: Rechnung, info: MahnInfo | None, heute: date) -> tuple[str, int, date] | None:
+    """Nächster Schritt laut sevDesk-Daten (keine festen Tagesgrenzen):
+    Frist = reminderDeadline der letzten Mahnung, sonst Rechnungsdatum + Zahlungsziel.
+    Entwurf vorhanden -> versenden; Frist abgelaufen -> nächste Stufe (dunningLevel + 1); sonst nichts."""
+    if r.offen <= 0:
+        return None
+    if info is not None and info.entwurf:
+        return ("entwurf versenden", info.stufe, info.frist or r.faellig)
+    frist = (info.frist if info and info.frist else None) or r.faellig
+    if heute <= frist:
+        return None
+    return ("mahnen", max(r.stufe, info.stufe if info else 0) + 1, frist)

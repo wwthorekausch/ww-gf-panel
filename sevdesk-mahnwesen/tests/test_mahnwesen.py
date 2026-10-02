@@ -58,3 +58,43 @@ def test_vor_2025_ignoriert():
     alt = m.parse(roh(id="1", datum="2024-12-31T00:00:00+01:00"))
     neu = m.parse(roh(id="2", datum="2025-01-01T00:00:00+01:00"))
     assert [r.id for r in m.ab_stichtag([alt, neu])] == ["2"]
+
+
+# --- Mahnstufe/Frist aus sevDesk-Feldern (dunningLevel, reminderDeadline) statt fester Tage ---
+def ma(id="9", origin="1", stufe="1", frist="2026-09-20T00:00:00+02:00", status="200", datum="2026-09-13T00:00:00+02:00", gesendet="2026-09-13"):
+    return {"id": id, "invoiceType": "MA", "origin": {"id": origin}, "dunningLevel": stufe, "reminderDeadline": frist,
+            "status": status, "invoiceDate": datum, "sendDate": gesendet}
+
+
+def test_stufe_aus_dunninglevel():
+    assert m.parse({**roh(), "dunningLevel": "2"}).stufe == 2 and m.parse(roh()).stufe == 0
+
+
+def test_letzte_mahnung_je_rechnung():
+    info = m.letzte_mahnungen([ma(id="8", stufe="1", datum="2026-08-01T00:00:00+02:00"), ma(id="9", stufe="2")])
+    assert info["1"].stufe == 2 and info["1"].frist == date(2026, 9, 20) and info["1"].entwurf is False
+
+
+def test_aktion_ohne_mahnung_frist_aus_zahlungsziel():
+    r = m.parse(roh())                              # fällig 15.09.
+    assert m.aktion(r, None, HEUTE) == ("mahnen", 1, date(2026, 9, 15))
+
+
+def test_aktion_frist_der_mahnung_noch_offen():
+    r = m.parse({**roh(), "dunningLevel": "1"})
+    assert m.aktion(r, m.letzte_mahnungen([ma(frist="2026-10-05T00:00:00+02:00")])["1"], HEUTE) is None
+
+
+def test_aktion_frist_der_mahnung_abgelaufen_naechste_stufe():
+    r = m.parse({**roh(), "dunningLevel": "1"})
+    assert m.aktion(r, m.letzte_mahnungen([ma()])["1"], HEUTE) == ("mahnen", 2, date(2026, 9, 20))
+
+
+def test_aktion_entwurf_versenden():
+    r = m.parse({**roh(), "dunningLevel": "1"})
+    info = m.letzte_mahnungen([ma(status="100", gesendet=None, frist="2026-10-05T00:00:00+02:00")])["1"]
+    assert m.aktion(r, info, HEUTE) == ("entwurf versenden", 1, date(2026, 10, 5))
+
+
+def test_aktion_nicht_faellig():
+    assert m.aktion(m.parse(roh(datum="2026-09-30T00:00:00+02:00")), None, HEUTE) is None

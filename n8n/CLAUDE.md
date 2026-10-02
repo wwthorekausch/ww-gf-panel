@@ -33,3 +33,5 @@ Nach dem Import:
 ## Selflearning
 
 ### Lessons
+
+- Gemini (Agent + Structured Output Parser): keine Union-Typen `"type": ["string","null"]` im Schema → 400 „Proto field is not repeating“. Einfache Typen, Feld optional lassen.

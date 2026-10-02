@@ -37,16 +37,21 @@ def cmd_sync(args, config) -> None:
     mahnungen = [r for r in _alle(client, {"invoiceType": "MA"}) if r.get("invoiceType") == "MA"]
     rechnungen = mahnwesen.ab_stichtag([mahnwesen.parse(r) for r in roh if r.get("invoiceType") != "MA"])
     conn = db.connect()
-    db.snapshot(conn, rechnungen, mahnwesen.gemahnt(mahnungen), datetime.now(timezone.utc).isoformat())
+    db.snapshot(conn, rechnungen, mahnwesen.gemahnt(mahnungen), mahnwesen.letzte_mahnungen(mahnungen),
+                datetime.now(timezone.utc).isoformat())
     print(f"{len(rechnungen)} offene Rechnung(en) ab {mahnwesen.STICHTAG:%d.%m.%Y}, {len(mahnungen)} Mahnung(en) synchronisiert.")
 
 
-def _aus_db(conn) -> list:
+def _aus_db(conn):
     from decimal import Decimal
-    return [mahnwesen.Rechnung(id=r["id"], nummer=r["nummer"], kunde=r["kunde"], kundennummer=r["kundennummer"],
-                               datum=date.fromisoformat(r["datum"]), faellig=date.fromisoformat(r["faellig"]),
-                               brutto=Decimal(str(r["brutto"])), offen=Decimal(str(r["offen"])), typ=r["typ"],
-                               status=r["status"]) for r in db.lade(conn)], {r["id"]: r["gemahnt"] for r in db.lade(conn)}
+    zeilen = db.lade(conn)
+    rechnungen = [mahnwesen.Rechnung(id=r["id"], nummer=r["nummer"], kunde=r["kunde"], kundennummer=r["kundennummer"],
+                                     datum=date.fromisoformat(r["datum"]), faellig=date.fromisoformat(r["faellig"]),
+                                     brutto=Decimal(str(r["brutto"])), offen=Decimal(str(r["offen"])), typ=r["typ"],
+                                     status=r["status"], stufe=r["stufe"]) for r in zeilen]
+    info = {r["id"]: mahnwesen.MahnInfo(stufe=r["mahn_stufe"], frist=date.fromisoformat(r["mahn_frist"]) if r["mahn_frist"] else None,
+                                        entwurf=bool(r["mahn_entwurf"])) for r in zeilen if r["mahn_stufe"] is not None}
+    return rechnungen, info
 
 
 def _eur(x) -> str:
@@ -70,21 +75,26 @@ def cmd_unhide(args, config) -> None:
 
 
 def cmd_mahnungen(args, config) -> None:
-    """Überfällige Rechnungen (Zahlungsziel überschritten), älteste zuerst, mit Mahnstufe."""
+    """Was ist zu tun? Laut sevDesk (dunningLevel, reminderDeadline der letzten Mahnung, Entwurf) — keine festen Tage."""
     if args.sync:
         cmd_sync(args, config)
     conn = db.connect()
-    rechnungen, gemahnt = _aus_db(conn)
-    schwellen = tuple(int(config["mahnstufen"][f"stufe_{i}_tage"]) for i in (1, 2, 3))
+    rechnungen, info = _aus_db(conn)
     heute = date.today()
-    xs = mahnwesen.ueberfaellig(rechnungen, heute)
-    print(f"{'Rechnung':<12} {'Kunde':<34} {'fällig':<10} {'Tage':>5} {'offen':>15}  Stufe  gemahnt")
-    for r in xs:
-        tage = mahnwesen.tage_ueberfaellig(r, heute)
-        g = gemahnt.get(r.id, 0)
-        print(f"{r.nummer:<12} {r.kunde[:34]:<34} {r.faellig:%d.%m.%y} {tage:>5} {_eur(r.offen)}  {mahnwesen.mahnstufe(tage, schwellen):^5}  {g or '-'}")
-    print(f"\n{len(xs)} überfällig, zusammen {_eur(sum((r.offen for r in xs), start=0)).strip()}"
-          f"  (Stufen ab {schwellen[0]}/{schwellen[1]}/{schwellen[2]} Tagen; ausgeblendete nicht enthalten)")
+    todo = [(mahnwesen.aktion(r, info.get(r.id), heute), r) for r in rechnungen]
+    todo = [(a, r) for a, r in todo if a]
+    gruppen = {}
+    for a, r in todo:
+        gruppen.setdefault((a[0], a[1]), []).append((a, r))
+    for (was, stufe) in sorted(gruppen, key=lambda k: (k[0] != "entwurf versenden", -k[1])):
+        xs = sorted(gruppen[(was, stufe)], key=lambda t: t[0][2])
+        titel = f"Mahnungs-Entwurf Stufe {stufe} versenden" if was == "entwurf versenden" else f"{stufe}. Mahnung erstellen"
+        print(f"\n== {titel}: {len(xs)} Rechnung(en), {_eur(sum((r.offen for _, r in xs), start=0)).strip()}")
+        for a, r in xs:
+            tage = (heute - a[2]).days
+            print(f"  {r.nummer:<12} {r.kunde[:34]:<34} Frist {a[2]:%d.%m.%y} ({tage:>4} T)  {_eur(r.offen)}  sevDesk-Stufe {r.stufe}")
+    print(f"\n{len(todo)} Rechnungen mit Handlungsbedarf, zusammen {_eur(sum((r.offen for _, r in todo), start=0)).strip()}"
+          f"  (ab {mahnwesen.STICHTAG:%d.%m.%Y}; Frist = Mahnfrist aus sevDesk bzw. Zahlungsziel; ausgeblendete nicht enthalten)")
 
 
 def cmd_offen(args, config) -> None:
@@ -112,7 +122,7 @@ def main() -> int:
     unhide_parser = sub.add_parser("unhide", help="Ausblenden rückgängig")
     unhide_parser.add_argument("invoice_id")
 
-    for name, hilfe in (("mahnungen", "überfällige Rechnungen mit Mahnstufe"), ("offen", "offener Betrag pro Kunde")):
+    for name, hilfe in (("mahnungen", "Handlungsbedarf laut sevDesk-Mahnstufe/-frist"), ("offen", "offener Betrag pro Kunde")):
         p = sub.add_parser(name, help=hilfe)
         p.add_argument("--sync", action="store_true", help="vorher frisch aus sevDesk laden")
 
