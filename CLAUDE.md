@@ -56,3 +56,5 @@ Jedes Modul verwaltet eigene `config.ini` innerhalb seines Ordners (gitignored, 
 Jedes Mal, wenn der Nutzer eine Korrektur gibt oder ich selbst einen Fehler feststelle, wird unter ##Lessons eine Einzeiler-Lektion ergänzt, damit derselbe Fehler künftig nicht wiederholt wird.
 
 ### Lessons
+
+- Befehle für den Nutzer immer ortsunabhängig angeben (Alias `cockpit` oder absoluter Pfad / `cd` davor) — Nutzer startet aus `~`, relative `python3 cli.py` schlagen fehl.

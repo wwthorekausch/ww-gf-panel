@@ -4,6 +4,14 @@ Lokale Automatisierung für Geschäftsführungs-Aufgaben: sevDesk-Buchhaltung, G
 
 ## Jobs starten
 
+Einmalig globalen Befehl anlegen (fish), dann von jedem Ordner aus nutzbar:
+
+```fish
+alias --save cockpit 'python3 "/Users/thorekausch/Documents/workplaces/ww/WW KI Themen/WW-GF-Cockpit/cockpit.py"'
+```
+
+Danach `cockpit` (Menü) bzw. `cockpit job <name>`. Ohne Alias: im Projektordner `python3 cockpit.py …`.
+
 ```bash
 python3 cockpit.py                      # Menü: Nummer eingeben, Enter
 python3 cockpit.py job sevdesk-vorschau # Job direkt per Name oder Nummer
