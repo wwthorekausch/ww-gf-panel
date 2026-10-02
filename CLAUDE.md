@@ -58,4 +58,6 @@ Jedes Mal, wenn der Nutzer eine Korrektur gibt oder ich selbst einen Fehler fest
 
 ### Lessons
 
+- Nur selbst geänderte Dateien gezielt stagen (`git add <pfade>`), nie `git add -A` — sonst landen fremde Änderungen (andere Sitzung/Nutzer) ungeprüft im Commit.
+
 - Befehle für den Nutzer immer ortsunabhängig angeben (Alias `cockpit` oder absoluter Pfad / `cd` davor) — Nutzer startet aus `~`, relative `python3 cli.py` schlagen fehl.
