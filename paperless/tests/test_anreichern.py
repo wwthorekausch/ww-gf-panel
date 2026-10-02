@@ -67,3 +67,14 @@ def test_platzhalter_nie_korrespondent():
     for name in ("- keine Angabe -", "Sonstiges", "", "  "):
         assert not a.korrespondent_tauglich(name)
     assert a.korrespondent_tauglich("Hetzner")
+
+
+def test_belegnummer_im_dateinamen_mit_unterstrich():
+    belege = [{"id": "11", "nr": "201020737315", "firma": "plentymarkets", "brutto": Decimal("1"), "netto": Decimal("1")}]
+    doc = {"title": "invoice", "original_file_name": "invoice_201020737315_2026-09-28.pdf", "content": ""}
+    assert a.finde_beleg(doc, belege)["id"] == "11"
+
+
+def test_belegnummer_kein_teiltreffer_ziffern():
+    belege = [{"id": "11", "nr": "20102073731", "firma": "x", "brutto": Decimal("1"), "netto": Decimal("1")}]
+    assert a.finde_beleg({"title": "", "original_file_name": "invoice_201020737315.pdf", "content": ""}, belege) is None
