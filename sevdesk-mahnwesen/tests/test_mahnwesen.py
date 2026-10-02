@@ -149,3 +149,11 @@ def test_mail_text_enthaelt_eckdaten():
     t = m.mahn_mail(nummer="RE-7", datum=date(2026, 6, 1), betrag=Decimal("120.49"), frist=date(2026, 10, 9), stufe=1)
     assert t["subject"] == "Zahlungserinnerung zur Rechnung RE-7"
     assert "RE-7 vom 01.06.2026" in t["text"] and "120,49 €" in t["text"] and "09.10.2026" in t["text"]
+
+
+def test_mail_wahl_rechnungsadresse_vor_haupt():
+    w = lambda v, main="0", key="2": {"type": "EMAIL", "value": v, "main": main, "key": {"id": key}}
+    assert m.waehle_mail([w("a@x.de"), w("rechnung@x.de", key="8")]) == "rechnung@x.de"
+    assert m.waehle_mail([w("a@x.de", main="1"), w("b@x.de")]) == "a@x.de"
+    assert m.waehle_mail([w("a@x.de"), w("b@x.de")]) is None
+    assert m.waehle_mail([w("nur@x.de")]) == "nur@x.de"

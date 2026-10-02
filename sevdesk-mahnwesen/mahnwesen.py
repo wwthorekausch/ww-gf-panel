@@ -182,3 +182,18 @@ def mahn_mail(nummer: str, datum: date, betrag: Decimal, frist: date, stufe: int
         + f"Die {titel} finden Sie im Anhang.<br><br>Mit freundlichen Grüßen<br>Web Wikinger GmbH"
     )
     return {"subject": f"{titel} zur Rechnung {nummer}", "text": text}
+
+
+RECHNUNGSADRESSE_KEY = "8"   # sevDesk CommunicationWayKey "Rechnungsadresse"
+
+
+def waehle_mail(wege: list[dict]) -> str | None:
+    """Empfänger: Rechnungsadresse > Hauptadresse > einzige Adresse; sonst None (nicht raten)."""
+    mails = [w for w in wege if w.get("type") == "EMAIL" and w.get("value")]
+    for auswahl in ([w for w in mails if str((w.get("key") or {}).get("id")) == RECHNUNGSADRESSE_KEY],
+                    [w for w in mails if str(w.get("main")) in ("1", "True", "true")], mails):
+        if len(auswahl) == 1:
+            return auswahl[0]["value"]
+        if len(auswahl) > 1:
+            return None
+    return None

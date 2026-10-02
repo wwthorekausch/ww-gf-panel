@@ -176,14 +176,12 @@ def cmd_mahnung_senden(args, config) -> None:
     an = args.an
     if not an:
         kid = (orig_roh[0].get("contact") or {}).get("id")
-        wege = [w for w in client.get("CommunicationWay", params={"contact[id]": kid, "contact[objectName]": "Contact"})["objects"]
-                if w.get("type") == "EMAIL" and w.get("value")]
-        haupt = [w for w in wege if str(w.get("main")) == "1"]
-        auswahl = haupt or wege
-        if len(auswahl) != 1:
-            print(f"E-Mail-Adresse nicht eindeutig ({[w['value'] for w in wege]}) — mit --an angeben.")
+        wege = client.get("CommunicationWay", params={"contact[id]": kid, "contact[objectName]": "Contact"})["objects"]
+        an = mahnwesen.waehle_mail(wege)
+        if not an:
+            print(f"E-Mail-Adresse nicht eindeutig ({[w['value'] for w in wege if w.get('type') == 'EMAIL']}) — mit --an angeben "
+                  f"oder in sevDesk eine Adresse als 'Rechnungsadresse' markieren.")
             return
-        an = auswahl[0]["value"]
     if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", an or ""):
         print(f"Ungültige E-Mail-Adresse: {an}")
         return
