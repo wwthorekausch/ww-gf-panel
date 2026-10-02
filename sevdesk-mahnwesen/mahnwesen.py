@@ -117,3 +117,19 @@ def aktion(r: Rechnung, info: MahnInfo | None, heute: date) -> tuple[str, int, d
     if heute <= frist:
         return None
     return ("mahnen", max(r.stufe, info.stufe if info else 0) + 1, frist)
+
+
+def _kompakt(t: str) -> str:
+    import re
+    return re.sub(r"[^a-z0-9äöüß]", "", (t or "").lower())
+
+
+def absprache(kunde: str, absprachen: list[dict], rechnung: str | None = None) -> dict | None:
+    """Absprache für Kunde (Name-Teilstring ohne Sonderzeichen), optional nur für eine Rechnungsnummer."""
+    k = _kompakt(kunde)
+    for a in absprachen:
+        if _kompakt(a.get("kunde", "")) and _kompakt(a["kunde"]) in k:
+            if a.get("rechnung") and a["rechnung"] != rechnung:
+                continue
+            return a
+    return None

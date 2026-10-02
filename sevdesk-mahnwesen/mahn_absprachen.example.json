@@ -1,0 +1,5 @@
+[
+  {"kunde": "Beispiel Kunde", "aktion": "nicht_mahnen", "notiz": "Absprache: nicht mahnen"},
+  {"kunde": "Muster GmbH", "rechnung": "RE-10001", "aktion": "nicht_mahnen", "notiz": "Ratenzahlung vereinbart (nur diese Rechnung)"},
+  {"kunde": "Inkasso Fall GmbH", "aktion": "inkasso", "notiz": "beim Inkasso, nicht weiter mahnen"}
+]

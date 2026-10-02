@@ -98,3 +98,19 @@ def test_aktion_entwurf_versenden():
 
 def test_aktion_nicht_faellig():
     assert m.aktion(m.parse(roh(datum="2026-09-30T00:00:00+02:00")), None, HEUTE) is None
+
+
+# --- Absprachen: Kunden nicht mahnen / bereits Inkasso ---
+ABSPRACHEN = [{"kunde": "Beispiel'n'Shop", "aktion": "nicht_mahnen", "notiz": "Absprache GF"},
+              {"kunde": "Muster Group", "aktion": "inkasso", "notiz": "beim Inkasso"}]
+
+
+def test_absprache_findet_kunde_ohne_sonderzeichen():
+    assert m.absprache("beispiel’n’shop GmbH", ABSPRACHEN)["aktion"] == "nicht_mahnen"
+    assert m.absprache("The Muster Group GmbH & Co. KG", ABSPRACHEN)["aktion"] == "inkasso"
+    assert m.absprache("Andere AG", ABSPRACHEN) is None
+
+
+def test_absprache_mit_rechnungsnummer_nur_diese():
+    a = [{"kunde": "Andere AG", "rechnung": "RE-1", "aktion": "nicht_mahnen", "notiz": "Ratenzahlung"}]
+    assert m.absprache("Andere AG", a, "RE-1") and m.absprache("Andere AG", a, "RE-2") is None

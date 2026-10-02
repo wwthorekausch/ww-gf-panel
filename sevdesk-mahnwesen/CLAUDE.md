@@ -26,6 +26,10 @@ python cli.py unhide <id> # Ausblenden rückgängig
 
 Auch aufrufbar über zentralen Dispatcher im Root: `python ../cockpit.py sevdesk-mahnwesen <befehl>`
 
+## Absprachen
+
+`mahn_absprachen.json` (gitignored, Vorlage `mahn_absprachen.example.json`): Kunden (Teilstring ohne Sonderzeichen, optional `rechnung`) mit `aktion` `nicht_mahnen` oder `inkasso` + `notiz`. `mahnungen` nimmt sie aus den Mahnstufen und listet sie separat unter „Absprachen“.
+
 ## Architektur
 
 - `sevdesk_client.py` — API-Wrapper (REST, Token-Auth, Basis-URL `https://my.sevdesk.de/api/v1`)

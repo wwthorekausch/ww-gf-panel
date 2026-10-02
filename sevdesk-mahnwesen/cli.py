@@ -81,8 +81,16 @@ def cmd_mahnungen(args, config) -> None:
     conn = db.connect()
     rechnungen, info = _aus_db(conn)
     heute = date.today()
-    todo = [(mahnwesen.aktion(r, info.get(r.id), heute), r) for r in rechnungen]
-    todo = [(a, r) for a, r in todo if a]
+    import json
+    pfad = MODULE_DIR / "mahn_absprachen.json"
+    absprachen = json.loads(pfad.read_text(encoding="utf-8")) if pfad.exists() else []
+    todo, vereinbart = [], []
+    for r in rechnungen:
+        a = mahnwesen.aktion(r, info.get(r.id), heute)
+        if not a:
+            continue
+        ab = mahnwesen.absprache(r.kunde, absprachen, r.nummer)
+        (vereinbart if ab else todo).append((ab, r) if ab else (a, r))
     gruppen = {}
     for a, r in todo:
         gruppen.setdefault((a[0], a[1]), []).append((a, r))
@@ -93,6 +101,10 @@ def cmd_mahnungen(args, config) -> None:
         for a, r in xs:
             tage = (heute - a[2]).days
             print(f"  {r.nummer:<12} {r.kunde[:34]:<34} Frist {a[2]:%d.%m.%y} ({tage:>4} T)  {_eur(r.offen)}  sevDesk-Stufe {r.stufe}")
+    if vereinbart:
+        print(f"\n== Absprachen (nicht mahnen): {len(vereinbart)} Rechnung(en), {_eur(sum((r.offen for _, r in vereinbart), start=0)).strip()}")
+        for ab, r in sorted(vereinbart, key=lambda t: (t[0]["aktion"], t[1].kunde, t[1].faellig)):
+            print(f"  {r.nummer:<12} {r.kunde[:34]:<34} {_eur(r.offen)}  {ab['aktion']}: {ab.get('notiz', '')}")
     print(f"\n{len(todo)} Rechnungen mit Handlungsbedarf, zusammen {_eur(sum((r.offen for _, r in todo), start=0)).strip()}"
           f"  (ab {mahnwesen.STICHTAG:%d.%m.%Y}; Frist = Mahnfrist aus sevDesk bzw. Zahlungsziel; ausgeblendete nicht enthalten)")
 

@@ -1,6 +1,10 @@
 # n8n
 
-Import-Workflows für n8n (kein n8n-MCP angebunden → JSON importieren).
+Import-Workflows für n8n. Instanz: https://n8n.web-wikinger.de = **GF-n8n der Web Wikinger** (Geschäftsführung, nicht Kunden/Team).
+
+## MCP
+
+`n8n-gf` (Paket `n8n-mcp`) per `claude mcp add --scope local n8n-gf -- <pfad>/n8n/mcp-start.sh` — nur in diesem Projekt, nicht global. API-Key nur aus Keychain `ww-gf-cockpit-n8n` (n8n → Settings → n8n API). Schreibende MCP-Aufrufe (Workflow anlegen/ändern/aktivieren/löschen, Ausführung starten) nur nach Einzel-Freigabe; lesen frei.
 
 ## gmail-gmi-zu-paperless.json
 
@@ -26,7 +30,7 @@ Stündlich bis zu 10 Rechnungen ab 01.01.2025 (Typ Eingangs-/Ausgangsrechnung) *
 - Vorher-Werte stehen in der Notiz → manuell rückgängig machbar.
 
 Nach dem Import:
-1. In Paperless Tag **„KI-geprüft“** anlegen, ID notieren → in Knoten „Paperless: ungeprüfte Rechnungen“ (`tags__id__none`) und „Änderungen + Tag bauen“ (`KI_GEPRUEFT_TAG_ID`) eintragen.
+1. Tag **„KI-geprüft“** = ID `18` (in Knoten „Paperless: ungeprüfte Rechnungen“ `tags__id__none` und „Änderungen + Tag bauen“ eingetragen).
 2. Credentials: Header Auth „Paperless Token“ an den drei HTTP-Knoten, „Google Gemini (PaLM) API“ am Modell-Knoten.
 3. Erst manuell mit 1–2 Dokumenten testen (page_size auf 1), Notizen prüfen, dann aktivieren.
 
