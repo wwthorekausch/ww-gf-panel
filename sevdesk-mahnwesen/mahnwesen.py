@@ -205,3 +205,18 @@ def neue_frist_ok(alt: date | None, neu: date, heute: date) -> tuple[bool, str]:
     if neu <= heute:
         return False, "neue Frist muss in der Zukunft liegen"
     return True, "ok"
+
+
+def gebuehr_erlassbar(ma: dict, original: dict) -> tuple[bool, str]:
+    """Offene Mahngebühr einer sonst bezahlten Rechnung per Minderung (bookAmount 0 €, Typ O) abschließen?"""
+    if ma.get("invoiceType") != "MA":
+        return False, "keine Mahnung"
+    if str(ma.get("status")) != "750":
+        return False, f"Mahnung Status {ma.get('status')} (nicht teilbezahlt)"
+    if (ma.get("invoiceDate") or "")[:10] < STICHTAG.isoformat():
+        return False, "vor 2025"
+    if str(original.get("status")) != "1000":
+        return False, "Rechnung nicht bezahlt"
+    if _dec(ma.get("sumGross")) != 0 or _dec(ma.get("paidAmount")) != 0:
+        return False, "Betrag/Zahlung auf der Mahnung ≠ 0 (prüfen)"
+    return True, "ok"

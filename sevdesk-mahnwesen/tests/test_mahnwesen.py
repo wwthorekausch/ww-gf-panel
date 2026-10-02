@@ -163,3 +163,16 @@ def test_neue_frist_nur_wenn_alt_abgelaufen_und_neu_in_zukunft():
     assert m.neue_frist_ok(date(2025, 12, 11), date(2026, 10, 9), HEUTE) == (True, "ok")
     assert m.neue_frist_ok(date(2026, 10, 20), date(2026, 10, 9), HEUTE)[0] is False     # alte Frist läuft noch
     assert m.neue_frist_ok(date(2025, 12, 11), date(2026, 9, 30), HEUTE)[0] is False     # neue Frist in der Vergangenheit
+
+
+# --- Mahngebühr erlassen (bookAmount 0 €, Typ O) nur wenn Rechnung bezahlt und nichts anderes offen ---
+def test_gebuehr_erlassbar():
+    ma_ = {"invoiceType": "MA", "status": "750", "sumGross": "0", "paidAmount": "0", "reminderCharge": "3",
+           "invoiceDate": "2026-07-06T00:00:00+02:00"}
+    bezahlt = {"status": "1000"}
+    assert m.gebuehr_erlassbar(ma_, bezahlt) == (True, "ok")
+    assert m.gebuehr_erlassbar({**ma_, "status": "1000"}, bezahlt)[0] is False          # schon erledigt
+    assert m.gebuehr_erlassbar(ma_, {"status": "200"})[0] is False                      # Rechnung noch offen
+    assert m.gebuehr_erlassbar({**ma_, "paidAmount": "142.8"}, bezahlt)[0] is False     # negativer Rest/Überzahlung
+    assert m.gebuehr_erlassbar({**ma_, "invoiceDate": "2024-12-01T00:00:00+01:00"}, bezahlt)[0] is False
+    assert m.gebuehr_erlassbar({**ma_, "invoiceType": "RE"}, bezahlt)[0] is False

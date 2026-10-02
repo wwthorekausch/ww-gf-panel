@@ -225,6 +225,40 @@ def cmd_mahnung_senden(args, config) -> None:
     print(f"Versendet: Status {nach.get('status')}, sendDate {nach.get('sendDate')}, sendType {nach.get('sendType')}")
 
 
+VERZICHT_KONTO = 4842223   # Offline-Konto "Kein Beleg / Vertrag" — 0-€-Protokollbuchung
+
+
+def cmd_mahngebuehr_erlassen(args, config) -> None:
+    """Offene Mahngebühren bezahlter Rechnungen per Minderung (bookAmount 0 €, Typ O) abschließen. Kein Geldfluss."""
+    client = build_client(config)
+    kandidaten = []
+    for ma in _alle(client, {"invoiceType": "MA", "status": 750}):
+        if ma.get("invoiceType") != "MA":
+            continue
+        orig = client.get(f"Invoice/{ma['origin']['id']}")["objects"][0]
+        ok, grund = mahnwesen.gebuehr_erlassbar(ma, orig)
+        (kandidaten.append((ma, orig)) if ok else print(f"  übersprungen MA {ma['id']} zu {orig.get('invoiceNumber')}: {grund}"))
+    summe = sum((mahnwesen._dec(ma.get("reminderCharge")) for ma, _ in kandidaten), start=mahnwesen.Decimal("0"))
+    print(f"{len(kandidaten)} Mahngebühren erlassbar, zusammen {_eur(summe).strip()}")
+    if args.dry_run or not kandidaten:
+        print("DRY-RUN — nichts gebucht" if args.dry_run else "")
+        return
+    if input(f"{min(len(kandidaten), args.limit)} Mahngebühren als Minderung abschließen? [j/N] ").strip().lower() != "j":
+        return
+    erledigt = 0
+    for ma, orig in kandidaten[: args.limit]:
+        client.put(f"Invoice/{int(ma['id'])}/bookAmount",
+                   json={"amount": 0, "date": date.today().isoformat(), "type": "O",
+                         "checkAccount": {"id": VERZICHT_KONTO, "objectName": "CheckAccount"}, "createFeed": False})
+        nach = client.get(f"Invoice/{ma['id']}")["objects"][0]
+        o2 = client.get(f"Invoice/{orig['id']}")["objects"][0]
+        if str(nach.get("status")) != "1000" or str(o2.get("status")) != "1000" or mahnwesen._dec(nach.get("paidAmount")) != 0:
+            print(f"STOPP bei MA {ma['id']} ({orig.get('invoiceNumber')}): Status {nach.get('status')}, Rechnung {o2.get('status')}")
+            break
+        erledigt += 1
+    print(f"erledigt: {erledigt} Mahngebühren erlassen (Rechnungen unverändert)")
+
+
 def cmd_offen(args, config) -> None:
     """Offener Betrag pro Kunde (Gutschriften gegengerechnet), davon überfällig."""
     if args.sync:
@@ -262,6 +296,9 @@ def main() -> int:
     p.add_argument("--an", help="Empfänger-E-Mail (sonst aus dem Kontakt)")
     p.add_argument("--neue-frist", help="abgelaufene Frist im Entwurf neu setzen (JJJJ-MM-TT)")
     p.add_argument("--dry-run", action="store_true")
+    p = sub.add_parser("mahngebuehr-erlassen", help="offene Mahngebühren bezahlter Rechnungen als Minderung abschließen")
+    p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--limit", type=int, default=100)
     args = parser.parse_args()
 
     try:
@@ -278,6 +315,7 @@ def main() -> int:
         "offen": cmd_offen,
         "mahnung-entwurf": cmd_mahnung_entwurf,
         "mahnung-senden": cmd_mahnung_senden,
+        "mahngebuehr-erlassen": cmd_mahngebuehr_erlassen,
     }
     handlers[args.command](args, config)
     return 0
