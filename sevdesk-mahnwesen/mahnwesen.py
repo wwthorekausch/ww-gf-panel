@@ -133,3 +133,18 @@ def absprache(kunde: str, absprachen: list[dict], rechnung: str | None = None) -
                 continue
             return a
     return None
+
+
+def mahnbar(r: Rechnung, info: MahnInfo | None, absprachen: list[dict], heute: date) -> tuple[bool, str, int | None]:
+    """Darf für diese Rechnung jetzt ein Mahnungs-Entwurf angelegt werden?"""
+    if r.datum < STICHTAG:
+        return False, "Rechnung vor 2025", None
+    ab = absprache(r.kunde, absprachen, r.nummer)
+    if ab:
+        return False, f"Absprache: {ab['aktion']} ({ab.get('notiz', '')})", None
+    a = aktion(r, info, heute)
+    if a is None:
+        return False, "Frist noch nicht abgelaufen oder nichts offen", None
+    if a[0] != "mahnen":
+        return False, "Mahnungs-Entwurf existiert schon — erst versenden", None
+    return True, f"{a[1]}. Mahnung", a[1]

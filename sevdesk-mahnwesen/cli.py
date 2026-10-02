@@ -109,6 +109,46 @@ def cmd_mahnungen(args, config) -> None:
           f"  (ab {mahnwesen.STICHTAG:%d.%m.%Y}; Frist = Mahnfrist aus sevDesk bzw. Zahlungsziel; ausgeblendete nicht enthalten)")
 
 
+MAHN_PFAD = "Invoice/Factory/createInvoiceReminder"   # einziger Schreibpfad: Mahnung als Entwurf anlegen
+
+
+def cmd_mahnung_entwurf(args, config) -> None:
+    """Mahnungs-Entwurf (Typ MA) für eine Rechnung anlegen — nur wenn laut Mahnliste fällig. Versendet nichts."""
+    import json
+    cmd_sync(args, config)
+    conn = db.connect()
+    rechnungen, info = _aus_db(conn)
+    r = next((x for x in rechnungen if x.nummer.upper() == args.rechnung.upper() or x.nummer.upper().endswith(args.rechnung.upper())), None)
+    if r is None:
+        print(f"{args.rechnung}: nicht unter den offenen Rechnungen ab 2025 (oder ausgeblendet).")
+        return
+    pfad = MODULE_DIR / "mahn_absprachen.json"
+    absprachen = json.loads(pfad.read_text(encoding="utf-8")) if pfad.exists() else []
+    ok, grund, stufe = mahnwesen.mahnbar(r, info.get(r.id), absprachen, date.today())
+    print(f"{r.nummer}  {r.kunde}  offen {_eur(r.offen).strip()}  fällig {r.faellig:%d.%m.%Y}  sevDesk-Stufe {r.stufe}")
+    if not ok:
+        print(f"Kein Entwurf: {grund}")
+        return
+    print(f"Anlegen: {grund} als Entwurf (wird NICHT versendet).")
+    if args.dry_run:
+        print("DRY-RUN — nichts geschrieben")
+        return
+    if input("Entwurf anlegen? [j/N] ").strip().lower() != "j":
+        return
+    client = build_client(config)
+    vorher = {str(m["id"]) for m in _alle(client, {"invoiceType": "MA"}) if str((m.get("origin") or {}).get("id")) == r.id}
+    client._request("POST", MAHN_PFAD, params={"invoice[id]": int(r.id), "invoice[objectName]": "Invoice"},
+                    json={"invoice": {"id": int(r.id), "objectName": "Invoice"}})
+    neu = [m for m in _alle(client, {"invoiceType": "MA"})
+           if str((m.get("origin") or {}).get("id")) == r.id and str(m["id"]) not in vorher]
+    if not neu:
+        print("WARNUNG: kein neuer Mahnungs-Entwurf gefunden — in sevDesk prüfen.")
+        return
+    m = neu[0]
+    print(f"Angelegt: Mahnung {m.get('invoiceNumber') or m['id']} (ID {m['id']}), Stufe {m.get('dunningLevel')}, "
+          f"Status {m.get('status')}, Frist {(m.get('reminderDeadline') or '')[:10]}, Betrag {m.get('reminderTotal')}")
+
+
 def cmd_offen(args, config) -> None:
     """Offener Betrag pro Kunde (Gutschriften gegengerechnet), davon überfällig."""
     if args.sync:
@@ -138,6 +178,9 @@ def main() -> int:
         p = sub.add_parser(name, help=hilfe)
         p.add_argument("--sync", action="store_true", help="vorher frisch aus sevDesk laden")
 
+    p = sub.add_parser("mahnung-entwurf", help="Mahnungs-Entwurf für eine fällige Rechnung anlegen (versendet nicht)")
+    p.add_argument("rechnung", help="Rechnungsnummer, z.B. RE-27319 oder 27319")
+    p.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
     try:
@@ -152,6 +195,7 @@ def main() -> int:
         "unhide": cmd_unhide,
         "mahnungen": cmd_mahnungen,
         "offen": cmd_offen,
+        "mahnung-entwurf": cmd_mahnung_entwurf,
     }
     handlers[args.command](args, config)
     return 0

@@ -114,3 +114,20 @@ def test_absprache_findet_kunde_ohne_sonderzeichen():
 def test_absprache_mit_rechnungsnummer_nur_diese():
     a = [{"kunde": "Andere AG", "rechnung": "RE-1", "aktion": "nicht_mahnen", "notiz": "Ratenzahlung"}]
     assert m.absprache("Andere AG", a, "RE-1") and m.absprache("Andere AG", a, "RE-2") is None
+
+
+# --- Mahnungs-Entwurf nur, wenn wirklich fällig ---
+def test_mahnbar_ok():
+    r = m.parse({**roh(nr="RE-5", datum="2026-09-01T00:00:00+02:00"), "dunningLevel": "1"})
+    info = m.letzte_mahnungen([ma(origin="1")])["1"]          # Frist 20.09. abgelaufen
+    assert m.mahnbar(r, info, [], HEUTE) == (True, "2. Mahnung", 2)
+
+
+def test_mahnbar_nicht_bei_absprache_entwurf_vor_stichtag_oder_frist():
+    r = m.parse(roh(kunde="Muster Group"))
+    assert m.mahnbar(r, None, ABSPRACHEN, HEUTE)[0] is False
+    r2 = m.parse({**roh(), "dunningLevel": "1"})
+    entwurf = m.letzte_mahnungen([ma(status="100", gesendet=None)])["1"]
+    assert m.mahnbar(r2, entwurf, [], HEUTE)[0] is False
+    assert m.mahnbar(m.parse(roh(datum="2024-12-01T00:00:00+01:00")), None, [], HEUTE)[0] is False
+    assert m.mahnbar(m.parse(roh(datum="2026-09-30T00:00:00+02:00")), None, [], HEUTE)[0] is False
