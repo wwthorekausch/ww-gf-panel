@@ -40,7 +40,7 @@ def re_nummer(doc: dict) -> str | None:
 def finde_beleg(doc: dict, belege: list[dict]) -> dict | None:
     """Eingangsbeleg, dessen Belegnummer (>= 5 Zeichen) im Dokument steht — nur bei genau einem Treffer."""
     text = _text(doc)
-    treffer = [b for b in belege if len(b.get("nr") or "") >= 5
+    treffer = [b for b in belege if len(b.get("nr") or "") >= 5 and re.search(r"\d", b["nr"])
                and re.search(rf"(?<![A-Za-z0-9-]){re.escape(b['nr'])}(?![A-Za-z0-9-])", text, re.IGNORECASE)]  # _ trennt
     if not treffer or len({b["nr"].lower() for b in treffer}) != 1:
         return None

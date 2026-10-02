@@ -90,3 +90,10 @@ def test_verschiedene_nummern_bleibt_mehrdeutig():
     belege = [{"id": "1", "nr": "AAAA11", "status": 1000, "firma": "p", "brutto": Decimal("1"), "netto": Decimal("1")},
               {"id": "2", "nr": "BBBB22", "status": 1000, "firma": "p", "brutto": Decimal("1"), "netto": Decimal("1")}]
     assert a.finde_beleg({"title": "", "original_file_name": "AAAA11 BBBB22", "content": ""}, belege) is None
+
+
+def test_belegnummer_ohne_ziffer_zaehlt_nicht():
+    belege = [{"id": "1", "nr": "5673330964", "status": 50, "firma": "Google", "brutto": Decimal("1"), "netto": Decimal("1")},
+              {"id": "2", "nr": "Gebühren", "status": 1000, "firma": "Bank", "brutto": Decimal("1"), "netto": Decimal("1")}]
+    doc = {"title": "5673330964", "original_file_name": "5673330964.pdf", "content": "Rechnungsnummer 5673330964 Gebühren"}
+    assert a.finde_beleg(doc, belege)["id"] == "1"
