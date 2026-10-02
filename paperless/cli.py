@@ -137,37 +137,44 @@ def cmd_anreichern(args) -> int:
                 status = "Eingangsrechnung nicht in sevDesk" + (f" (in GMI: {gb['nr']})" if gb else " (auch nicht in GMI)")
         if status:
             fehlt.append((doc, status))
-        kid = None
+        kid, neu_name = None, None
         if quelle and anreichern.korrespondent_tauglich(quelle.firma):
             kid = anreichern.korrespondent_id(quelle.firma, korrespondenten)
             if kid is None and not doc.get("correspondent"):
                 neue_korr.add(quelle.firma)
-                if not args.dry_run:
-                    k = c.korrespondent_anlegen(quelle.firma)
-                    korrespondenten.append(k)
-                    kid = k["id"]
+                neu_name = quelle.firma          # wird erst beim Schreiben dieses Dokuments angelegt
         body = anreichern.plan(doc, quelle, cf, optionen, kid, pfad)
-        if body:
-            patches.append((doc, body))
+        if body or neu_name:
+            patches.append((doc, body or {}, neu_name))
     with (MODULE_DIR / "fehlt_in_sevdesk.csv").open("w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh, delimiter=";")
         w.writerow(["paperless_id", "titel", "datei", "datum", "status"])
         for doc, status in fehlt:
             w.writerow([doc["id"], doc.get("title"), doc.get("original_file_name"), doc.get("created"), status])
     felder = {}
-    for _, b in patches:
+    for _, b, _n in patches:
         for k in b:
             felder[k] = felder.get(k, 0) + 1
     print(f"{len(docs)} Dokumente: {len(patches)} zu ergänzen {felder}, {len(neue_korr)} neue Korrespondenten, "
           f"{len(fehlt)} fehlen in sevDesk (fehlt_in_sevdesk.csv)")
     if args.dry_run:
-        for doc, b in patches[:8]:
-            print(f"  #{doc['id']:<5} {(doc.get('title') or '')[:40]:<40} {b}")
+        for doc, b, neu in patches[:8]:
+            print(f"  #{doc['id']:<5} {(doc.get('title') or '')[:40]:<40} {b}{' + neuer Korrespondent ' + neu if neu else ''}")
         print(f"  neue Korrespondenten: {sorted(neue_korr)[:15]}")
         return 0
-    for i, (doc, b) in enumerate(patches[: args.limit], 1):
+    geschrieben = []
+    for doc, b, neu in patches[: args.limit]:
+        if neu:
+            kid = anreichern.korrespondent_id(neu, korrespondenten)
+            if kid is None:
+                k = c.korrespondent_anlegen(neu)
+                korrespondenten.append(k)
+                kid = k["id"]
+            b = {**b, "correspondent": kid}
         c.dokument_patchen(doc["id"], b)
-    print(f"geschrieben: {min(len(patches), args.limit)} Dokumente")
+        geschrieben.append(str(doc["id"]))
+    (MODULE_DIR / "anreichern_letzter_lauf.txt").write_text(" ".join(geschrieben), encoding="utf-8")
+    print(f"geschrieben: {len(geschrieben)} Dokumente (IDs in anreichern_letzter_lauf.txt)")
     return 0
 
 
