@@ -43,6 +43,10 @@ Typischer Ablauf:
 
 Jeder Modul-Befehl geht weiterhin direkt: `python3 cockpit.py <modul> <befehl> [args]`, z.B. `python3 cockpit.py sevdesk-belege usd-auf-eur --beleg … --umsatz …`.
 
+## Testen
+
+Schritt-für-Schritt mit konkreten Befehlen: [TESTPLAN.md](TESTPLAN.md).
+
 ## Täglicher Lauf
 
 07:00 automatisch: sichere sevDesk-Buchungen + GetMyInvoices-Bericht, Mitteilung mit Ergebnis. Installation siehe [launchd/CLAUDE.md](launchd/CLAUDE.md).
