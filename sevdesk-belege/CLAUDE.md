@@ -6,7 +6,7 @@ Belegentwürfe (GetMyInvoices) prüfen/korrigieren und Zahlungen zuordnen, Zahlu
 
 1. Token: `security add-generic-password -s ww-gf-cockpit-sevdesk -a sevdesk -w`
 2. `cp config.ini.example config.ini` (nur Grenzwerte)
-3. `python3 -m pip install -r requirements.txt`
+3. `python3 -m pip install -r ../requirements.txt` (gemeinsam für alle Module)
 4. `python3 cli.py init-regeln` → `standardbuchungen.json` prüfen/anpassen (gitignored, enthält Namen)
 
 ## Befehle

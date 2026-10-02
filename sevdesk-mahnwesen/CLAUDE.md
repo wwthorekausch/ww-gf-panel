@@ -12,7 +12,7 @@
    stufe_2_tage = 14
    stufe_3_tage = 30
    ```
-2. `pip install -r requirements.txt`
+2. `python3 -m pip install -r ../requirements.txt` (gemeinsam für alle Module)
 
 ## Befehle
 

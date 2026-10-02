@@ -60,7 +60,7 @@ Schritt-für-Schritt mit konkreten Befehlen: [TESTPLAN.md](TESTPLAN.md).
 ## Setup
 
 ```bash
-python3 -m pip install -r sevdesk-belege/requirements.txt
+python3 -m pip install -r "/Users/thorekausch/Documents/workplaces/ww/WW KI Themen/WW-GF-Cockpit/requirements.txt"
 ```
 
 Secrets nur in der macOS-Keychain (nie in Dateien):
@@ -95,10 +95,10 @@ Lokale Konfiguration (gitignored) aus den Vorlagen anlegen:
 
 ## Tests
 
+Alle Module auf einmal, im Projektordner:
+
 ```bash
-python3 -m pytest tests -q
-(cd sevdesk-belege && python3 -m pytest -q)
-(cd paperless && python3 -m pytest -q)
+python3 -m pytest -q
 ```
 
 ## Neues Modul / neuer Job

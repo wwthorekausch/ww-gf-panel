@@ -84,12 +84,23 @@ Haken setzen, wenn das Ergebnis passt. Bei Abweichung: Ausgabe kopieren und meld
 - [ ] Workflow ein zweites Mal ausführen: dieselbe Mail wird nicht erneut verarbeitet.
 - [ ] Danach `cockpit job paperless-duplikate`: kein neues Duplikat. Falls doch → Paperless liest diese Mails zusätzlich selbst ein (siehe Hinweis in [n8n/CLAUDE.md](n8n/CLAUDE.md)).
 
-## 6 · Tests (optional)
+## 6 · Alfred
+
+- [ ] Workflow bauen und importieren
+
+  ```fish
+  python3 "/Users/thorekausch/Documents/workplaces/ww/WW KI Themen/WW-GF-Cockpit/alfred/bauen.py"
+  open "/Users/thorekausch/Documents/workplaces/ww/WW KI Themen/WW-GF-Cockpit/alfred/GF-Cockpit.alfredworkflow"
+  ```
+
+- [ ] `gf` → Liste aller Jobs; `gf mahn` filtert.
+- [ ] `gf offene` + Enter → Terminal öffnet, `…/cockpit.py job offene-posten` läuft.
+- [ ] `gf status` + ⌘+Enter → Mitteilung mit letzten Läufen. Bei ✎-Job ist ⌘+Enter gesperrt.
+
+## 7 · Tests (optional)
 
 ```fish
-cd "/Users/thorekausch/Documents/workplaces/ww/WW KI Themen/WW-GF-Cockpit"
-python3 -m pytest tests -q
-cd sevdesk-belege; python3 -m pytest -q; cd ../paperless; python3 -m pytest -q; cd ..
+cd "/Users/thorekausch/Documents/workplaces/ww/WW KI Themen/WW-GF-Cockpit"; and python3 -m pytest -q
 ```
 
 Erwartet: alles `passed`.
