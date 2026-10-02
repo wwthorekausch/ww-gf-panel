@@ -30,7 +30,7 @@ python cli.py mahnung-entwurf <RE-nr> [--dry-run]  # Mahnungs-Entwurf (MA) anleg
 
 python cli.py mahnung-senden <RE-nr> [--an mail] [--neue-frist JJJJ-MM-TT] [--dry-run]  # Entwurf per E-Mail (PDF) senden, nach Vorschau + j
 
-python cli.py mahngebuehr-erlassen [--dry-run] [--limit N]  # offene Mahngebühr (MA 750, Rechnung bezahlt) per bookAmount 0 €/Typ O abschließen
+python cli.py mahngebuehr-erlassen [--dry-run] [--limit N] [--auch-vor-2025]  # offene Mahngebühr (MA 750, Rechnung bezahlt) per bookAmount 0 €/Typ O abschließen
 
 ## Absprachen
 

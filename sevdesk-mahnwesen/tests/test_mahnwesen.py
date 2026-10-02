@@ -176,3 +176,11 @@ def test_gebuehr_erlassbar():
     assert m.gebuehr_erlassbar({**ma_, "paidAmount": "142.8"}, bezahlt)[0] is False     # negativer Rest/Überzahlung
     assert m.gebuehr_erlassbar({**ma_, "invoiceDate": "2024-12-01T00:00:00+01:00"}, bezahlt)[0] is False
     assert m.gebuehr_erlassbar({**ma_, "invoiceType": "RE"}, bezahlt)[0] is False
+
+
+def test_gebuehr_erlassbar_vor_2025_nur_mit_freigabe():
+    alt = {"invoiceType": "MA", "status": "750", "sumGross": "0", "paidAmount": "0", "reminderCharge": "6",
+           "invoiceDate": "2022-03-01T00:00:00+01:00"}
+    assert m.gebuehr_erlassbar(alt, {"status": "1000"})[0] is False
+    assert m.gebuehr_erlassbar(alt, {"status": "1000"}, auch_vor_2025=True) == (True, "ok")
+    assert m.gebuehr_erlassbar({**alt, "paidAmount": "5"}, {"status": "1000"}, auch_vor_2025=True)[0] is False

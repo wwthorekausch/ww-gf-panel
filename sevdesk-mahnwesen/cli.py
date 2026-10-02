@@ -236,7 +236,7 @@ def cmd_mahngebuehr_erlassen(args, config) -> None:
         if ma.get("invoiceType") != "MA":
             continue
         orig = client.get(f"Invoice/{ma['origin']['id']}")["objects"][0]
-        ok, grund = mahnwesen.gebuehr_erlassbar(ma, orig)
+        ok, grund = mahnwesen.gebuehr_erlassbar(ma, orig, auch_vor_2025=args.auch_vor_2025)
         (kandidaten.append((ma, orig)) if ok else print(f"  übersprungen MA {ma['id']} zu {orig.get('invoiceNumber')}: {grund}"))
     summe = sum((mahnwesen._dec(ma.get("reminderCharge")) for ma, _ in kandidaten), start=mahnwesen.Decimal("0"))
     print(f"{len(kandidaten)} Mahngebühren erlassbar, zusammen {_eur(summe).strip()}")
@@ -299,6 +299,7 @@ def main() -> int:
     p = sub.add_parser("mahngebuehr-erlassen", help="offene Mahngebühren bezahlter Rechnungen als Minderung abschließen")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--limit", type=int, default=100)
+    p.add_argument("--auch-vor-2025", action="store_true", help="Ausnahme vom Stichtag nur für diesen Befehl (Entscheidung 2026-10-02)")
     args = parser.parse_args()
 
     try:
