@@ -93,7 +93,7 @@ def _quellen():
             nummer=r.get("invoiceNumber"), brutto=d(r.get("sumGross")), netto=d(r.get("sumNet")),
             firma=kontakt.get("name") or r.get("addressName"), kundennummer=kontakt.get("customerNumber"),
             sevdesk_id=str(r["id"]), rechnungstyp=anreichern.RECHNUNGSTYP.get(r.get("invoiceType") or ""))
-    belege = [{"id": str(v["id"]), "nr": (v.get("description") or "").strip(),
+    belege = [{"id": str(v["id"]), "nr": (v.get("description") or "").strip(), "status": v.get("status"),
                "firma": v.get("supplierName") or (v.get("supplier") or {}).get("name"),
                "brutto": d(v.get("sumGross")), "netto": d(v.get("sumNet"))}
               for v in laden.alle(sev, "Voucher", {"embed": "supplier"})]

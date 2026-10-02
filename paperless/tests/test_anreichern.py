@@ -78,3 +78,15 @@ def test_belegnummer_im_dateinamen_mit_unterstrich():
 def test_belegnummer_kein_teiltreffer_ziffern():
     belege = [{"id": "11", "nr": "20102073731", "firma": "x", "brutto": Decimal("1"), "netto": Decimal("1")}]
     assert a.finde_beleg({"title": "", "original_file_name": "invoice_201020737315.pdf", "content": ""}, belege) is None
+
+
+def test_gleiche_nummer_mehrfach_nimmt_gebuchten():
+    belege = [{"id": "20", "nr": "MP29716", "status": 50, "firma": "p", "brutto": Decimal("1"), "netto": Decimal("1")},
+              {"id": "10", "nr": "MP29716", "status": 1000, "firma": "p", "brutto": Decimal("1"), "netto": Decimal("1")}]
+    assert a.finde_beleg({"title": "", "original_file_name": "invoice_MP29716_2026-09-30.pdf", "content": ""}, belege)["id"] == "10"
+
+
+def test_verschiedene_nummern_bleibt_mehrdeutig():
+    belege = [{"id": "1", "nr": "AAAA11", "status": 1000, "firma": "p", "brutto": Decimal("1"), "netto": Decimal("1")},
+              {"id": "2", "nr": "BBBB22", "status": 1000, "firma": "p", "brutto": Decimal("1"), "netto": Decimal("1")}]
+    assert a.finde_beleg({"title": "", "original_file_name": "AAAA11 BBBB22", "content": ""}, belege) is None

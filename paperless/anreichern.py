@@ -42,7 +42,10 @@ def finde_beleg(doc: dict, belege: list[dict]) -> dict | None:
     text = _text(doc)
     treffer = [b for b in belege if len(b.get("nr") or "") >= 5
                and re.search(rf"(?<![A-Za-z0-9-]){re.escape(b['nr'])}(?![A-Za-z0-9-])", text, re.IGNORECASE)]  # _ trennt
-    return treffer[0] if len(treffer) == 1 else None
+    if not treffer or len({b["nr"].lower() for b in treffer}) != 1:
+        return None
+    # dieselbe Nummer mehrfach (gebuchter Beleg + Entwurfskopie): gebuchten bzw. ältesten nehmen
+    return sorted(treffer, key=lambda b: (-int(b.get("status") or 0), int(b["id"]) if str(b["id"]).isdigit() else 0))[0]
 
 
 def geld(betrag: Decimal) -> str:
