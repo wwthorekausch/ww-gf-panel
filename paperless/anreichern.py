@@ -1,6 +1,7 @@
 """Paperless-Felder aus sevDesk/GetMyInvoices ergänzen. Reine Logik: vorhandene Werte werden nie überschrieben."""
 import re
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 
 ZAHLART = {"cc": "Kreditkarte", "direct_debit": "Lastschrift", "paypal": "Paypal", "bank_transfer": "Rechnung"}
@@ -17,6 +18,7 @@ class Quelle:
     sevdesk_id: str | None = None
     rechnungstyp: str | None = None
     zahlart: str | None = None
+    waehrung: str = "EUR"
 
 
 def _norm(t: str) -> str:
@@ -81,8 +83,8 @@ def netto_pruefen(brutto: Decimal | None, netto: Decimal | None, text: str) -> D
     return None
 
 
-def geld(betrag: Decimal) -> str:
-    return f"EUR{betrag.quantize(Decimal('0.01'))}"
+def geld(betrag: Decimal, waehrung: str = "EUR") -> str:
+    return f"{(waehrung or 'EUR').upper()}{betrag.quantize(Decimal('0.01'))}"
 
 
 def zahlart(gmi_methode: str | None) -> str | None:
@@ -109,9 +111,9 @@ def aehnlich(a_: str, b_: str) -> bool:
 
 
 def korrespondent_id(name: str, korrespondenten: list[dict]) -> int | None:
-    key = _norm(name)
+    key = _norm(name).replace(" ", "")
     for k in korrespondenten:
-        if _norm(k["name"]) == key:
+        if _norm(k["name"]).replace(" ", "") == key:
             return k["id"]
     return None
 
@@ -124,8 +126,8 @@ def plan(doc: dict, quelle: Quelle | None, cf: dict[str, int], optionen: dict, k
     if quelle is not None:
         neu = {
             "Rechnungsnummer": quelle.nummer,
-            "Brutto": geld(quelle.brutto) if quelle.brutto is not None else None,
-            "Netto": geld(quelle.netto) if quelle.netto is not None else None,
+            "Brutto": geld(quelle.brutto, quelle.waehrung) if quelle.brutto is not None else None,
+            "Netto": geld(quelle.netto, quelle.waehrung) if quelle.netto is not None else None,
             "Firma": quelle.firma if korrespondent_tauglich(quelle.firma) else None,
             "Kundenummer": quelle.kundennummer,
             "SevdeskID": quelle.sevdesk_id,
@@ -152,8 +154,8 @@ KLAERBAR = ("Rechnungsnummer", "Brutto", "Netto", "Firma", "SevdeskID", "Rechnun
 def _sollwerte(quelle: Quelle, optionen: dict) -> dict:
     return {
         "Rechnungsnummer": quelle.nummer,
-        "Brutto": geld(quelle.brutto) if quelle.brutto is not None else None,
-        "Netto": geld(quelle.netto) if quelle.netto is not None else None,
+        "Brutto": geld(quelle.brutto, quelle.waehrung) if quelle.brutto is not None else None,
+        "Netto": geld(quelle.netto, quelle.waehrung) if quelle.netto is not None else None,
         "Firma": quelle.firma if korrespondent_tauglich(quelle.firma) else None,
         "Kundenummer": quelle.kundennummer,
         "SevdeskID": quelle.sevdesk_id,
@@ -171,10 +173,16 @@ def korrektur(doc: dict, quelle: Quelle | None, cf: dict[str, int], optionen: di
         return None
     soll = dict(vorhanden)
     if quelle is not None:
+        sid = cf.get("SevdeskID")
+        quellwechsel = vorhanden.get(sid) not in (None, "") and vorhanden.get(sid) != quelle.sevdesk_id
         for name, wert in _sollwerte(quelle, optionen).items():
             fid = cf.get(name)
-            if fid is not None and wert not in (None, ""):
+            if fid is None:
+                continue
+            if wert not in (None, ""):
                 soll[fid] = wert
+            elif quellwechsel and name in KLAERBAR and fid in soll:
+                soll[fid] = None          # Wert stammte vom alten (falschen) Treffer
     else:
         for name in KLAERBAR:
             fid = cf.get(name)
@@ -189,3 +197,33 @@ def korrektur(doc: dict, quelle: Quelle | None, cf: dict[str, int], optionen: di
     if not behalten and (quelle is None or korrespondent_id) and doc.get("correspondent") != ziel_korr:
         body["correspondent"] = ziel_korr
     return body or None
+
+
+ZAHLUNGSBELEG = re.compile(r"payment receipt|zahlungsbest(ä|ae)tigung|zahlungsbeleg|receipt for your payment", re.IGNORECASE)
+
+
+def ist_zahlungsbeleg(doc: dict) -> bool:
+    return bool(ZAHLUNGSBELEG.search(_text(doc)))
+
+
+def finde_ueber_firma_betrag(doc: dict, belege: list[dict], tage: int = 10) -> dict | None:
+    """Stufe 2 ohne Nummer: Firma (erstes Wort >= 5 Zeichen) und Bruttobetrag stehen im OCR-Text,
+    Belegdatum höchstens `tage` vom Dokumentdatum entfernt, genau ein Beleg (gleiche Nr. mehrfach erlaubt)."""
+    text = _text(doc)
+    ntext = _norm(text)
+    try:
+        doc_datum = date.fromisoformat(str(doc.get("created") or "")[:10])
+    except ValueError:
+        return None
+    treffer = []
+    for b in belege:
+        wort = (_norm(b.get("firma") or "").split() or [""])[0]
+        if len(wort) < 5 or not korrespondent_tauglich(b.get("firma")) or wort not in ntext:
+            continue
+        if b.get("datum") is None or abs((b["datum"] - doc_datum).days) > tage:
+            continue
+        if betrag_im_text(b.get("brutto"), text):
+            treffer.append(b)
+    if not treffer or len({(b.get("nr") or b["id"]).lower() for b in treffer}) != 1:
+        return None
+    return sorted(treffer, key=lambda b: -int(b.get("status") or 0))[0]

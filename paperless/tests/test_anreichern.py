@@ -182,3 +182,54 @@ def test_platzhalter_firma_wird_nicht_eingetragen():
     doc = {"id": 1, "custom_fields": [], "correspondent": None, "storage_path": 1}
     body = a.plan(doc, a.Quelle(nummer="11811331", firma="- keine Angabe -"), CF, OPT, None, 1)
     assert {f["field"]: f["value"] for f in body["custom_fields"]} == {1: "11811331"}
+
+
+# --- Stufe 2: Firma + Betrag + Datum aus OCR; Zahlungsbelege ---
+from datetime import date
+
+DO = {"id": "GMI-1", "nr": "556820130", "firma": "DigitalOcean", "brutto": Decimal("66.4"), "netto": Decimal("66.4"),
+      "datum": date(2026, 10, 1), "status": 0}
+RECEIPT = {"title": "160202127", "original_file_name": "160202127.pdf", "created": "2026-10-01",
+           "content": "Payment Receipt From DigitalOcean LLC ID: 160202127 Kiel 24114 Payment (Amex ending in 1007): -$66.40"}
+
+
+def test_stufe2_firma_betrag_datum():
+    assert a.finde_ueber_firma_betrag(RECEIPT, [DO])["nr"] == "556820130"
+
+
+def test_stufe2_betrag_falsch():
+    assert a.finde_ueber_firma_betrag(RECEIPT, [{**DO, "brutto": Decimal("97.22")}]) is None
+
+
+def test_stufe2_datum_zu_weit():
+    assert a.finde_ueber_firma_betrag(RECEIPT, [{**DO, "datum": date(2026, 9, 10)}]) is None
+
+
+def test_stufe2_zwei_kandidaten_mehrdeutig():
+    assert a.finde_ueber_firma_betrag(RECEIPT, [DO, {**DO, "id": "GMI-2", "nr": "999999999"}]) is None
+
+
+def test_stufe2_kurzer_firmenname_zaehlt_nicht():
+    assert a.finde_ueber_firma_betrag({**RECEIPT, "content": "Bank 66,40"}, [{**DO, "firma": "Bank"}]) is None
+
+
+def test_zahlungsbeleg_erkennen():
+    assert a.ist_zahlungsbeleg(RECEIPT)
+    assert a.ist_zahlungsbeleg({"title": "Zahlungsbestätigung", "original_file_name": "", "content": ""})
+    assert not a.ist_zahlungsbeleg({"title": "Rechnung 4711", "original_file_name": "", "content": "Rechnung Betrag 10 EUR"})
+
+
+def test_quellwechsel_leert_veraltete_werte():
+    doc = {"id": 181, "custom_fields": [{"field": 1, "value": "24114"}, {"field": 5, "value": "129585933"},
+                                        {"field": 7, "value": "EUR83.63"}], "correspondent": None, "storage_path": 1}
+    q = a.Quelle(nummer="556820130", brutto=Decimal("66.4"), firma="DigitalOcean", waehrung="USD")
+    werte = {f["field"]: f["value"] for f in a.korrektur(doc, q, CF, OPT, korrespondent_id=None)["custom_fields"]}
+    assert werte[1] == "556820130" and werte[5] is None and werte[7] is None and werte[6] == "USD66.40"
+
+
+def test_geld_waehrung():
+    assert a.geld(Decimal("66.4"), "USD") == "USD66.40" and a.geld(Decimal("1")) == "EUR1.00"
+
+
+def test_korrespondent_ohne_leerzeichen_gleich():
+    assert a.korrespondent_id("DigitalOcean", [{"id": 11, "name": "Digital Ocean"}]) == 11

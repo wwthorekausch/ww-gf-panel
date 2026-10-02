@@ -18,7 +18,8 @@
 
 ```bash
 python cli.py sync        # offene Rechnungen von sevDesk holen, lokale DB aktualisieren
-python cli.py mahnungen   # Übersicht: Rechnung, Kunde, Betrag, Tage überfällig, Mahnstufe
+python cli.py mahnungen [--sync]  # überfällige Rechnungen: fällig (Datum + Zahlungsziel), Tage, offen, Stufe, schon gemahnt
+python cli.py offen [--sync]      # offener Betrag pro Kunde, davon überfällig (Gutschriften gegengerechnet)
 python cli.py hide <id>   # Rechnung ausblenden: lokales Flag + Tag "nicht-relevant" in sevDesk setzen
 python cli.py unhide <id> # Ausblenden rückgängig
 ```

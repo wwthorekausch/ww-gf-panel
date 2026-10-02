@@ -28,6 +28,8 @@ JOBS = [
     Job("sevdesk-review", "sevDesk: unsichere Fälle einzeln entscheiden", "sevdesk-belege", ("review",), True),
     Job("sevdesk-duplikate", "sevDesk: Beleg-Duplikate löschen (nach j)", "sevdesk-belege", ("aufraeumen",), True),
     Job("sevdesk-status", "sevDesk: letzte Läufe", "sevdesk-belege", ("status",)),
+    Job("mahnungen", "Mahnwesen: überfällige Rechnungen (frisch aus sevDesk)", "sevdesk-mahnwesen", ("mahnungen", "--sync")),
+    Job("offene-posten", "Mahnwesen: offener Betrag pro Kunde (frisch aus sevDesk)", "sevdesk-mahnwesen", ("offen", "--sync")),
     Job("gmi-suche", "GetMyInvoices: Zahlungen ohne Beleg suchen (Bericht)", "sevdesk-belege", ("gmi-suche",)),
     Job("gmi-taggen", "GetMyInvoices: in sevDesk fehlende Belege mit Tag 'Sevdesk'", "sevdesk-belege", ("gmi-taggen",), True),
     Job("paperless-duplikate", "Paperless: Duplikate anzeigen", "paperless", ("duplikate",)),

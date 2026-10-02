@@ -25,6 +25,8 @@ python3 cockpit.py job 2 --ja           # ohne Rückfrage (z.B. für Zeitplan)
 | 3 | `sevdesk-review` | unsichere Fälle einzeln entscheiden (j/n) | ✎ |
 | 4 | `sevdesk-duplikate` | Beleg-Duplikate (gleiche Belegnummer) löschen nach „j“ | ✎ |
 | 5 | `sevdesk-status` | letzte Läufe anzeigen | – |
+| – | `mahnungen` | überfällige Rechnungen mit Mahnstufe (lädt frisch, nur lesen) | – |
+| – | `offene-posten` | offener Betrag pro Kunde (lädt frisch, nur lesen) | – |
 | 6 | `gmi-suche` | Zahlungen ohne Beleg in GetMyInvoices suchen → `gmi_bericht.csv` | – |
 | 7 | `gmi-taggen` | in sevDesk fehlende GetMyInvoices-Dokumente mit Tag „Sevdesk“ markieren | ✎ |
 | 8 | `paperless-duplikate` | inhaltsgleiche Dokumente anzeigen | – |

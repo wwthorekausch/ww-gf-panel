@@ -6,7 +6,7 @@ import requests
 RETRY_STATUS = {429, 500, 502, 503, 504}
 VERSUCHE = 3
 FELDER = "id,title,content,created,added,original_file_name,correspondent,document_type,tags,custom_fields,storage_path"
-PATCH_ERLAUBT = {"custom_fields", "correspondent", "storage_path"}
+PATCH_ERLAUBT = {"custom_fields", "correspondent", "storage_path", "document_type"}
 
 
 class PaperlessClient:
@@ -55,3 +55,6 @@ class PaperlessClient:
     def korrespondent_anlegen(self, name: str) -> dict:
         # matching_algorithm 0 = keine automatische Zuordnung künftiger Dokumente
         return self._request("POST", f"{self.base}/api/correspondents/", json={"name": name, "matching_algorithm": 0}).json()
+
+    def dokumenttyp_anlegen(self, name: str) -> dict:
+        return self._request("POST", f"{self.base}/api/document_types/", json={"name": name, "matching_algorithm": 0}).json()

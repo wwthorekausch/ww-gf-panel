@@ -93,7 +93,9 @@ def _quellen():
             nummer=r.get("invoiceNumber"), brutto=d(r.get("sumGross")), netto=d(r.get("sumNet")),
             firma=kontakt.get("name") or r.get("addressName"), kundennummer=kontakt.get("customerNumber"),
             sevdesk_id=str(r["id"]), rechnungstyp=anreichern.RECHNUNGSTYP.get(r.get("invoiceType") or ""))
+    datum = lambda x: __import__("datetime").date.fromisoformat(x[:10]) if x else None
     belege = [{"id": str(v["id"]), "nr": (v.get("description") or "").strip(), "status": v.get("status"),
+               "datum": datum(v.get("voucherDate")),
                "firma": v.get("supplierName") or (v.get("supplier") or {}).get("name"),
                "brutto": d(v.get("sumGross")), "netto": d(v.get("sumNet"))}
               for v in laden.alle(sev, "Voucher", {"embed": "supplier"})]
@@ -102,7 +104,8 @@ def _quellen():
     gmi = GmiClient(keychain_token("ww-gf-cockpit-getmyinvoices"), cfg.get("getmyinvoices", "konto", fallback=""))
     gmi_docs = [{"id": f"GMI-{g['documentUid']}", "nr": (g.get("documentNumber") or "").strip(), "firma": g.get("companyName"),
                  "brutto": d(g.get("grossAmount")), "netto": d(g.get("netAmount")), "zahlart": g.get("paymentMethod"),
-                 "typ": g.get("documentType")} for g in gmi.dokumente("2024-01-01")]
+                 "typ": g.get("documentType"), "datum": datum(g.get("documentDate")),
+                 "waehrung": g.get("currency") or "EUR"} for g in gmi.dokumente("2024-01-01")]
     return rechnungen, belege, gmi_docs
 
 
@@ -113,8 +116,11 @@ def _bestimme(doc, typen, rechnungen, belege, gmi_docs):
         nr = anreichern.re_nummer(doc)
         quelle = rechnungen.get(nr or "")
         return quelle, ("" if quelle else f"Ausgangsrechnung {nr or '(Nr. nicht eindeutig)'} nicht in sevDesk")
-    if doc.get("document_type") == typen.get("Eingangsrechnung"):
+    if doc.get("document_type") in (typen.get("Eingangsrechnung"), typen.get("Zahlungsbeleg")):
         sb, gb = anreichern.finde_beleg(doc, belege), anreichern.finde_beleg(doc, gmi_docs)
+        if not sb and not gb:      # Stufe 2: Firma + Betrag + Datum aus dem OCR-Text
+            sb = anreichern.finde_ueber_firma_betrag(doc, belege)
+            gb = None if sb else anreichern.finde_ueber_firma_betrag(doc, gmi_docs)
         quelle = None
         if sb or gb:
             basis = sb or gb
@@ -124,8 +130,10 @@ def _bestimme(doc, typen, rechnungen, belege, gmi_docs):
             quelle = anreichern.Quelle(nummer=basis["nr"], brutto=basis["brutto"], netto=netto, firma=basis["firma"],
                                        sevdesk_id=sb["id"] if sb else None,
                                        rechnungstyp="Gutschrift" if (gb or {}).get("typ") == "CREDIT_NOTE" else "Rechnung",
-                                       zahlart=anreichern.zahlart((gb or {}).get("zahlart")))
-        status = "" if sb else "Eingangsrechnung nicht in sevDesk" + (f" (in GMI: {gb['nr']})" if gb else " (auch nicht in GMI)")
+                                       zahlart=anreichern.zahlart((gb or {}).get("zahlart")),
+                                       waehrung=basis.get("waehrung") or "EUR")
+        status = "" if sb or anreichern.ist_zahlungsbeleg(doc) else \
+            "Eingangsrechnung nicht in sevDesk" + (f" (in GMI: {gb['nr']})" if gb else " (auch nicht in GMI)")
         return quelle, status
     return None, ""
 
@@ -138,6 +146,8 @@ def _lesbar(body, doc, cf_namen, opt_labels, korr_namen):
             a_ = opt_labels.get(alt.get(f["field"]), alt.get(f["field"]))
             n_ = opt_labels.get(f["value"], f["value"])
             teile.append(f"{cf_namen.get(f['field'])}: {a_!s} → {n_!s}")
+    if "document_type" in body:
+        teile.append(f"Dokumenttyp: Eingangsrechnung → Zahlungsbeleg")
     if "correspondent" in body:
         teile.append(f"Korrespondent: {korr_namen.get(doc.get('correspondent'))} → {korr_namen.get(body['correspondent'], body['correspondent'])}")
     return "; ".join(teile)
@@ -157,7 +167,8 @@ def cmd_korrigieren(args) -> int:
     typen = {t["name"]: t["id"] for t in c.alle("document_types")}
     korrespondenten = c.alle("correspondents")
     rechnungen, belege, gmi_docs = _quellen()
-    rechnung_typen = {typen.get("Ausgangsrechnung"), typen.get("Eingangsrechnung")}
+    rechnung_typen = {typen.get("Ausgangsrechnung"), typen.get("Eingangsrechnung"), typen.get("Zahlungsbeleg")} - {None}
+    zb_id = typen.get("Zahlungsbeleg")
     kandidaten = []
     for doc in c.dokumente():
         if doc.get("document_type") not in rechnung_typen:
@@ -168,7 +179,9 @@ def cmd_korrigieren(args) -> int:
             kid = anreichern.korrespondent_id(quelle.firma, korrespondenten)
             if kid is None:
                 neu_name, kid = quelle.firma, f"(neu: {quelle.firma})"
-        body = anreichern.korrektur(doc, quelle, cf, optionen, kid, {k["id"]: k["name"] for k in korrespondenten})
+        body = anreichern.korrektur(doc, quelle, cf, optionen, kid, {k["id"]: k["name"] for k in korrespondenten}) or {}
+        if anreichern.ist_zahlungsbeleg(doc) and doc.get("document_type") == typen.get("Eingangsrechnung"):
+            body["document_type"] = zb_id or "(neu: Zahlungsbeleg)"
         if body:
             kandidaten.append((doc, body, neu_name))
     korr_namen = {k["id"]: k["name"] for k in korrespondenten}
@@ -183,6 +196,12 @@ def cmd_korrigieren(args) -> int:
             break
         if antwort != "j":
             continue
+        if body.get("document_type") == "(neu: Zahlungsbeleg)":
+            zb_id = c.dokumenttyp_anlegen("Zahlungsbeleg")["id"]
+            typen["Zahlungsbeleg"] = zb_id
+            body = {**body, "document_type": zb_id}
+        elif "document_type" in body and zb_id:
+            body = {**body, "document_type": zb_id}
         if neu_name:
             k = c.korrespondent_anlegen(neu_name)
             korrespondenten.append(k)

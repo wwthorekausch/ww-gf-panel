@@ -41,3 +41,9 @@ def test_patch_nur_erlaubte_felder(monkeypatch):
     c.dokument_patchen(1, {"storage_path": 1, "custom_fields": []})
     with pytest.raises(ValueError):
         c.dokument_patchen(1, {"title": "neu"})
+
+
+def test_patch_document_type_erlaubt(monkeypatch):
+    c = paperless_client.PaperlessClient("t", "https://p.example")
+    monkeypatch.setattr(c._session, "request", lambda m, url, **k: R(200, {"id": 1}))
+    c.dokument_patchen(1, {"document_type": 6})
