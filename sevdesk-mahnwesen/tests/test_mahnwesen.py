@@ -52,3 +52,9 @@ def test_offen_pro_kunde():
 def test_gutschrift_mindert_offen():
     rs = [m.parse(roh(id="1", kunde="A")), m.parse(roh(id="2", kunde="A", typ="GU", brutto="-19"))]
     assert m.offen_pro_kunde(rs, HEUTE)[0][1] == Decimal("100")
+
+
+def test_vor_2025_ignoriert():
+    alt = m.parse(roh(id="1", datum="2024-12-31T00:00:00+01:00"))
+    neu = m.parse(roh(id="2", datum="2025-01-01T00:00:00+01:00"))
+    assert [r.id for r in m.ab_stichtag([alt, neu])] == ["2"]

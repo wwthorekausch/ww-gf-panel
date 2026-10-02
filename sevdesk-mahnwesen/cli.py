@@ -35,10 +35,10 @@ def cmd_sync(args, config) -> None:
     client = build_client(config)
     roh = [r for st in (200, 750) for r in _alle(client, {"status": st, "embed": "contact"})]
     mahnungen = [r for r in _alle(client, {"invoiceType": "MA"}) if r.get("invoiceType") == "MA"]
-    rechnungen = [mahnwesen.parse(r) for r in roh if r.get("invoiceType") != "MA"]
+    rechnungen = mahnwesen.ab_stichtag([mahnwesen.parse(r) for r in roh if r.get("invoiceType") != "MA"])
     conn = db.connect()
     db.snapshot(conn, rechnungen, mahnwesen.gemahnt(mahnungen), datetime.now(timezone.utc).isoformat())
-    print(f"{len(rechnungen)} offene Rechnung(en), {len(mahnungen)} Mahnung(en) synchronisiert.")
+    print(f"{len(rechnungen)} offene Rechnung(en) ab {mahnwesen.STICHTAG:%d.%m.%Y}, {len(mahnungen)} Mahnung(en) synchronisiert.")
 
 
 def _aus_db(conn) -> list:

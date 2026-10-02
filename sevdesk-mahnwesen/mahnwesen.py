@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
 
+STICHTAG = date(2025, 1, 1)   # alles davor wird ignoriert
+
 
 @dataclass(frozen=True)
 class Rechnung:
@@ -70,3 +72,7 @@ def offen_pro_kunde(rechnungen: list[Rechnung], heute: date) -> list[tuple[str, 
             faellig[r.kunde] += r.offen
     out = [(k, summe[k], faellig[k], anzahl[k]) for k in summe]
     return sorted(out, key=lambda t: t[1], reverse=True)
+
+
+def ab_stichtag(rechnungen: list[Rechnung]) -> list[Rechnung]:
+    return [r for r in rechnungen if r.datum >= STICHTAG]

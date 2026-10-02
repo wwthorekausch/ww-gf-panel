@@ -48,6 +48,10 @@
             {
               "name": "fields",
               "value": "id,title,content,created,custom_fields,tags,document_type,correspondent"
+            },
+            {
+              "name": "created__date__gte",
+              "value": "2025-01-01"
             }
           ]
         },

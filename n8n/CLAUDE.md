@@ -20,7 +20,7 @@ Bekannte Grenze: Mails mit Anhang, aber ohne PDF, bekommen kein Label und werden
 
 ## paperless-gemini-pruefung.json
 
-Stündlich bis zu 10 Rechnungen (Typ Eingangs-/Ausgangsrechnung) **ohne** Tag „KI-geprüft“ aus Paperless → Gemini 2.5 Flash (Agent, JSON-Schema) liest OCR-Text → Code-Knoten baut Änderungen → `PATCH` Custom Fields + Tag „KI-geprüft“ → Prüfnotiz am Dokument (Hinweis, Änderungen, Vorher-Werte).
+Stündlich bis zu 10 Rechnungen ab 01.01.2025 (Typ Eingangs-/Ausgangsrechnung) **ohne** Tag „KI-geprüft“ aus Paperless → Gemini 2.5 Flash (Agent, JSON-Schema) liest OCR-Text → Code-Knoten baut Änderungen → `PATCH` Custom Fields + Tag „KI-geprüft“ → Prüfnotiz am Dokument (Hinweis, Änderungen, Vorher-Werte).
 
 - Felder werden nur bei Sicherheit ≥ 0,8 geändert; sonst nur Tag + Notiz. SevdeskID/Kundennummer/Korrespondent werden nie angefasst.
 - Vorher-Werte stehen in der Notiz → manuell rückgängig machbar.
