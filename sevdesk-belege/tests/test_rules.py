@@ -567,3 +567,18 @@ def test_umbuchung_commerce_nie():
 def test_gebuehr_waehrungsumrechnung_abgekuerzt():
     regel = Standardregel("Bankgebühren", rules.GEBUEHREN_MUSTER, "gebuehren", "70", "Bank")
     assert rules.passende_regeln(umsatz(name="", zweck="1,95% für Währungsumrechn. 12,34 USD"), [regel])
+
+
+# --- wechselseitig nächste Zahlung bei wiederkehrenden gleichen Beträgen ---
+def test_wechselseitig_naechste_paare():
+    b_aug, b_sep = beleg(id="ba", datum=date(2026, 8, 1)), beleg(id="bs", datum=date(2026, 9, 1))
+    u_aug, u_sep = umsatz(id="ua", datum=date(2026, 8, 2)), umsatz(id="us", datum=date(2026, 9, 2))
+    faelle = rules.einstufen([b_aug, b_sep], [], [u_aug, u_sep], W, [], G, HEUTE)
+    assert {(f.beleg.id, f.umsatz.id, f.sicher) for f in faelle if f.art == "beleg"} == {("ba", "ua", True), ("bs", "us", True)}
+
+
+def test_gleicher_tag_gleicher_betrag_bleibt_review():
+    b1, b2 = beleg(id="b1", datum=date(2026, 9, 1)), beleg(id="b2", datum=date(2026, 9, 1))
+    u1, u2 = umsatz(id="u1", datum=date(2026, 9, 2)), umsatz(id="u2", datum=date(2026, 9, 2))
+    faelle = rules.einstufen([b1, b2], [], [u1, u2], W, [], G, HEUTE)
+    assert not any(f.sicher for f in faelle if f.art == "beleg")

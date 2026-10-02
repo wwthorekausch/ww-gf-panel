@@ -124,3 +124,19 @@ def test_eigene_konten_aus_config():
     c.read_string("[eigene_konten]\nibans = DE11 2022, DE37\n[kategorien]\ngeldtransit = 40\n")
     g = cli.lade_grenzen(c)
     assert g.eigene_ibans == frozenset({"DE112022", "DE37"}) and g.transit_kategorie == "40"
+
+
+def test_nur_belegstatus():
+    from modell import Beleg
+    import dataclasses
+    f50 = Fall("beleg", True, "sicher", date(2026, 9, 1), beleg=Beleg("1", date(2026, 9, 1), "X", D("1"), None, "EUR", 50, "default", ()))
+    f100 = dataclasses.replace(f50, beleg=dataclasses.replace(f50.beleg, status=100))
+    std = fall(1)
+    assert cli.nur_belegstatus([f50, f100, std], "entwurf") == [f50]
+    assert cli.nur_belegstatus([f50, f100, std], "offen") == [f100]
+    assert len(cli.nur_belegstatus([f50, f100, std], None)) == 3
+
+
+def test_ausser_umsatz():
+    assert [f.umsatz.id for f in cli.ausser_umsatz([fall(1), fall(2), fall(3)], ["2"])] == ["1", "3"]
+    assert len(cli.ausser_umsatz([fall(1)], None)) == 1

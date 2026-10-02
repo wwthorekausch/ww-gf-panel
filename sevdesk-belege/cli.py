@@ -99,6 +99,20 @@ def verarbeite(faelle: list[Fall], schreiber, conn) -> dict:
     return z
 
 
+BELEGSTATUS = {"entwurf": 50, "offen": 100}
+
+
+def nur_belegstatus(faelle: list[Fall], status: str | None) -> list[Fall]:
+    """Nur Beleg-Fälle mit diesem Belegstatus (entwurf=50, offen=100); ohne Angabe alle."""
+    if status is None:
+        return faelle
+    return [f for f in faelle if f.beleg is not None and f.beleg.status == BELEGSTATUS[status]]
+
+
+def ausser_umsatz(faelle: list[Fall], ids: list[str] | None) -> list[Fall]:
+    return [f for f in faelle if not (ids and f.umsatz is not None and f.umsatz.id in ids)]
+
+
 def nur_art(faelle: list[Fall], art: str | None) -> list[Fall]:
     return faelle if art is None else [f for f in faelle if f.art == art]
 
@@ -150,7 +164,8 @@ def cmd_run(args) -> int:
     grenzen = lade_grenzen(_config())
     client = SevdeskClient(keychain_token(KEYCHAIN_SERVICE))
     _, faelle = _einstufen(client, grenzen)
-    sicher = nur_art(nur_umsatz([f for f in faelle if f.sicher], args.umsatz), args.art)
+    sicher = ausser_umsatz(nur_belegstatus(nur_art(nur_umsatz([f for f in faelle if f.sicher], args.umsatz), args.art),
+                                           args.belegstatus), args.ausser)
     for f in sicher:
         print(_zeile(f))
     conn = db.connect(MODULE_DIR)
@@ -179,7 +194,7 @@ def cmd_review(args) -> int:
     _, faelle = _einstufen(client, grenzen)
     conn = db.connect(MODULE_DIR)
     abgelehnt = db.abgelehnt(conn)
-    offen = [f for f in nur_umsatz(faelle, args.umsatz) if not f.sicher and f.umsatz and f.art in ("beleg", "rechnung", "standard")
+    offen = [f for f in nur_belegstatus(nur_umsatz(faelle, args.umsatz), args.belegstatus) if not f.sicher and f.umsatz and f.art in ("beleg", "rechnung", "standard")
              and (f.art, _beleg_id(f), f.umsatz.id) not in abgelehnt]
     run_id = db.run_start(conn, args.dry_run)
     schreiber = actions.Schreiber(client, conn, run_id, args.dry_run, args.limit)
@@ -416,6 +431,8 @@ def main() -> int:
         p.add_argument("--limit", type=int, default=20)
         p.add_argument("--umsatz", help="nur den Fall mit dieser Umsatz-ID bearbeiten")
         p.add_argument("--art", choices=("beleg", "rechnung", "standard"), help="nur diese Fallart")
+        p.add_argument("--belegstatus", choices=tuple(BELEGSTATUS), help="nur Belege im Entwurf (50) bzw. offen (100)")
+        p.add_argument("--ausser", action="append", help="Umsatz-ID auslassen (mehrfach möglich)")
     sub.add_parser("status")
     sub.add_parser("gmi-suche")
     p = sub.add_parser("gmi-taggen")
